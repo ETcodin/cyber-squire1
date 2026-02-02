@@ -1,0 +1,411 @@
+{
+  "name": "💰 Gumroad Solvency Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-hourly",
+      "name": "Check Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 700]
+    },
+    {
+      "parameters": {
+        "url": "https://api.gumroad.com/v2/sales",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gumroadApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "after",
+              "value": "={{ $now.minus({hours: 1}).toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-recent-sales",
+      "name": "Fetch Recent Sales",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 700],
+      "credentials": {
+        "gumroadApi": {
+          "id": "gumroad-cred",
+          "name": "Gumroad Sales API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sales = $input.item.json.sales || [];\nconst processed = [];\n\nfor (const sale of sales) {\n  const amount = parseFloat(sale.price) / 100; // Gumroad returns cents\n  const fee = parseFloat(sale.gumroad_fee) / 100;\n  const net = amount - fee;\n  \n  // Solvency allocation: 60% debt, 30% reinvest, 10% reserve\n  const debt_allocation = net * 0.60;\n  const reinvest_allocation = net * 0.30;\n  const reserve_allocation = net * 0.10;\n  \n  processed.push({\n    sale_id: sale.id,\n    product_name: sale.product_name,\n    customer_email: sale.email,\n    customer_name: sale.full_name,\n    sale_timestamp: sale.created_at,\n    gross_amount: amount,\n    fees: fee,\n    net_amount: net,\n    debt_allocation: debt_allocation,\n    reinvest_allocation: reinvest_allocation,\n    reserve_allocation: reserve_allocation,\n    currency: 'USD'\n  });\n}\n\nreturn processed;"
+      },
+      "id": "process-sales",
+      "name": "Process Sales & Allocate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 700]
+    },
+    {
+      "parameters": {
+        "operation": "getDatabasePages",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Schedule Trigger').item.json.notion_finance_db }}",
+          "mode": "id"
+        },
+        "options": {
+          "filter": {
+            "singleCondition": {
+              "key": "Type",
+              "condition": "equals",
+              "returnType": "select",
+              "value": "Total Debt"
+            }
+          }
+        }
+      },
+      "id": "get-current-debt",
+      "name": "Get Current Debt from Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [900, 700],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const currentDebt = parseFloat($('Get Current Debt from Notion').item.json.properties['Amount'].number || 60000);\nconst newPayment = $input.item.json.debt_allocation;\nconst updatedDebt = currentDebt - newPayment;\n\nreturn {\n  previous_debt: currentDebt,\n  payment_amount: newPayment,\n  new_debt: updatedDebt,\n  progress_percent: ((60000 - updatedDebt) / 60000 * 100).toFixed(2),\n  sale_data: $input.item.json\n};"
+      },
+      "id": "calculate-debt-reduction",
+      "name": "Calculate Debt Reduction",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 700]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Get Current Debt from Notion').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Amount",
+              "numberValue": "={{ $json.new_debt }}"
+            },
+            {
+              "key": "Progress %",
+              "numberValue": "={{ $json.progress_percent }}"
+            },
+            {
+              "key": "Last Updated",
+              "dateValue": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-debt-tracker",
+      "name": "Update Debt Tracker",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1340, 700],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Schedule Trigger').item.json.notion_transactions_db }}",
+          "mode": "id"
+        },
+        "title": "=Sale: {{ $('Process Sales & Allocate').item.json.product_name }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Sale ID",
+              "textValue": "={{ $('Process Sales & Allocate').item.json.sale_id }}"
+            },
+            {
+              "key": "Customer",
+              "textValue": "={{ $('Process Sales & Allocate').item.json.customer_name }}"
+            },
+            {
+              "key": "Amount",
+              "numberValue": "={{ $('Process Sales & Allocate').item.json.net_amount }}"
+            },
+            {
+              "key": "Debt Payment",
+              "numberValue": "={{ $('Process Sales & Allocate').item.json.debt_allocation }}"
+            },
+            {
+              "key": "Reinvest",
+              "numberValue": "={{ $('Process Sales & Allocate').item.json.reinvest_allocation }}"
+            },
+            {
+              "key": "Reserve",
+              "numberValue": "={{ $('Process Sales & Allocate').item.json.reserve_allocation }}"
+            },
+            {
+              "key": "Date",
+              "dateValue": "={{ $('Process Sales & Allocate').item.json.sale_timestamp }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-transaction",
+      "name": "Log Transaction",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1560, 700],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b-instruct-q4_K_M",
+        "prompt": "=Generate a personalized thank you message for a customer who just purchased:\n\nProduct: {{ $('Process Sales & Allocate').item.json.product_name }}\nCustomer: {{ $('Process Sales & Allocate').item.json.customer_name }}\n\nKeep it warm, professional, and brief (2-3 sentences). Mention their contribution to the Cyber-Squire mission.",
+        "options": {
+          "temperature": 0.9
+        }
+      },
+      "id": "generate-thank-you",
+      "name": "Generate Thank You Message",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [1780, 700],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Ollama Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "hello@yourdomain.com",
+        "toEmail": "={{ $('Process Sales & Allocate').item.json.customer_email }}",
+        "subject": "Thank you for your purchase!",
+        "emailType": "text",
+        "message": "={{ $json.response }}",
+        "options": {}
+      },
+      "id": "send-thank-you-email",
+      "name": "Send Thank You Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2000, 700],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $('Calculate Debt Reduction').item.json.progress_percent }}",
+              "operation": "largerEqual",
+              "value2": 25
+            }
+          ]
+        }
+      },
+      "id": "check-milestone",
+      "name": "Milestone Reached?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Schedule Trigger').item.json.notion_milestones_page }}",
+          "mode": "id"
+        },
+        "title": "=🎉 Debt Milestone: {{ $('Calculate Debt Reduction').item.json.progress_percent }}% Complete",
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "paragraph",
+              "richText": true,
+              "text": "=Remaining Debt: ${{ $('Calculate Debt Reduction').item.json.new_debt.toFixed(2) }}\n\nProgress: {{ $('Calculate Debt Reduction').item.json.progress_percent }}% toward solvency\n\nAchieved: {{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "celebrate-milestone",
+      "name": "Celebrate Milestone",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1560, 500],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Check Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Sales": {
+      "main": [
+        [
+          {
+            "node": "Process Sales & Allocate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Sales & Allocate": {
+      "main": [
+        [
+          {
+            "node": "Get Current Debt from Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Debt from Notion": {
+      "main": [
+        [
+          {
+            "node": "Calculate Debt Reduction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Debt Reduction": {
+      "main": [
+        [
+          {
+            "node": "Update Debt Tracker",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Milestone Reached?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Debt Tracker": {
+      "main": [
+        [
+          {
+            "node": "Log Transaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Transaction": {
+      "main": [
+        [
+          {
+            "node": "Generate Thank You Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Thank You Message": {
+      "main": [
+        [
+          {
+            "node": "Send Thank You Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Milestone Reached?": {
+      "main": [
+        [
+          {
+            "node": "Celebrate Milestone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Finance",
+      "id": "cd-tag-008"
+    },
+    {
+      "name": "Solvency",
+      "id": "cd-tag-009"
+    }
+  ],
+  "meta": {
+    "notes": "Automated financial solvency engine: Hourly Gumroad sales check → 60/30/10 allocation (debt/reinvest/reserve) → Updates Notion debt tracker → Logs transactions → Sends thank you emails → Celebrates milestones."
+  }
+}

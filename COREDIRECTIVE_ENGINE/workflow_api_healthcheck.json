@@ -1,0 +1,323 @@
+{
+  "name": "🏥 CoreDirective API Health Check",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start-node",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "webhookId": "coredirective-health-check",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "text": "{{ $json.input }}",
+        "options": {}
+      },
+      "id": "anthropic-check",
+      "name": "Test Anthropic API",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.8,
+      "position": [460, 180],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-cred",
+          "name": "Claude AI (Anthropic)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "owner": "anthropics",
+        "repository": "anthropic-sdk-python",
+        "operation": "get"
+      },
+      "id": "github-check",
+      "name": "Test GitHub API",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "github-cred",
+          "name": "GitHub CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getDatabasePages",
+        "databaseId": "={{ $json.notionDbId }}"
+      },
+      "id": "notion-check",
+      "name": "Test Notion API",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [460, 420],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.gumroad.com/v2/sales",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gumroadApi",
+        "options": {}
+      },
+      "id": "gumroad-check",
+      "name": "Test Gumroad API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 540],
+      "credentials": {
+        "gumroadApi": {
+          "id": "gumroad-cred",
+          "name": "Gumroad Sales API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.perplexity.ai/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "perplexityApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama-3.1-sonar-small-128k-online\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"test\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "perplexity-check",
+      "name": "Test Perplexity API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 660],
+      "credentials": {
+        "perplexityApi": {
+          "id": "perplexity-cred",
+          "name": "Perplexity API (PPLX)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  const nodeName = item.json.node || 'Unknown';\n  const status = item.error ? '❌ FAILED' : '✅ PASS';\n  const errorMsg = item.error ? item.error.message : 'OK';\n  \n  results.push({\n    service: nodeName,\n    status: status,\n    message: errorMsg,\n    timestamp: new Date().toISOString()\n  });\n}\n\nreturn results;"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "contains",
+              "value2": "FAILED"
+            }
+          ]
+        }
+      },
+      "id": "check-failures",
+      "name": "Any Failures?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.notionPageId }}",
+          "mode": "id"
+        },
+        "title": "🚨 CoreDirective API Health Alert",
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "paragraph",
+              "richText": true,
+              "text": "=API health check failed at {{ $now.toISO() }}\n\nFailed Services:\n{{ $json.failures }}"
+            }
+          ]
+        }
+      },
+      "id": "log-failure",
+      "name": "Log to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1120, 320],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "=✅ All CoreDirective APIs are healthy as of {{ $now.toISO() }}",
+        "additionalFields": {}
+      },
+      "id": "success-message",
+      "name": "Success Message",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1120, 520]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Test Anthropic API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Test GitHub API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Test Notion API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Test Gumroad API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Test Perplexity API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Anthropic API": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test GitHub API": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Notion API": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Gumroad API": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Perplexity API": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Any Failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Failures?": {
+      "main": [
+        [
+          {
+            "node": "Log to Notion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Success Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Health Check",
+      "id": "cd-tag-002"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

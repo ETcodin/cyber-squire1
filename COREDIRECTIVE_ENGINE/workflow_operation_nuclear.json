@@ -1,0 +1,367 @@
+{
+  "name": "☢️ Operation Nuclear - Lead Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-lead-intake",
+      "name": "Lead Intake Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 500],
+      "webhookId": "operation-nuclear-lead"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "lead-data",
+              "name": "company_name",
+              "value": "={{ $json.body.company }}",
+              "type": "string"
+            },
+            {
+              "id": "contact",
+              "name": "contact_name",
+              "value": "={{ $json.body.contact_name }}",
+              "type": "string"
+            },
+            {
+              "id": "contact-title",
+              "name": "contact_title",
+              "value": "={{ $json.body.contact_title }}",
+              "type": "string"
+            },
+            {
+              "id": "contact-email",
+              "name": "contact_email",
+              "value": "={{ $json.body.contact_email }}",
+              "type": "string"
+            },
+            {
+              "id": "linkedin",
+              "name": "linkedin_url",
+              "value": "={{ $json.body.linkedin_url }}",
+              "type": "string"
+            },
+            {
+              "id": "company-url",
+              "name": "company_url",
+              "value": "={{ $json.body.company_url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-lead-data",
+      "name": "Extract Lead Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 500]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-sonar-large-128k-online",
+        "prompt": "=Research this company and provide intelligence for a cybersecurity services outreach:\n\nCompany: {{ $json.company_name }}\nWebsite: {{ $json.company_url }}\nContact: {{ $json.contact_name }} ({{ $json.contact_title }})\nLinkedIn: {{ $json.linkedin_url }}\n\nProvide:\n1. Recent company news or funding rounds\n2. Technology stack insights\n3. Potential security pain points\n4. Key talking points for outreach\n5. Recommended approach (technical vs business value)\n\nFormat as JSON with keys: news, tech_stack, pain_points, talking_points, approach",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "perplexity-research",
+      "name": "Perplexity - Research Lead",
+      "type": "@n8n/n8n-nodes-langchain.lmChatPerplexity",
+      "typeVersion": 1,
+      "position": [680, 500],
+      "credentials": {
+        "perplexityApi": {
+          "id": "perplexity-cred",
+          "name": "Perplexity API (PPLX)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "prompt": "=You are an expert cybersecurity sales strategist. Draft a hyper-personalized cold outreach email.\n\nLead Intelligence:\nCompany: {{ $('Extract Lead Data').item.json.company_name }}\nContact: {{ $('Extract Lead Data').item.json.contact_name }}\nTitle: {{ $('Extract Lead Data').item.json.contact_title }}\n\nResearch Data:\n{{ $json.response }}\n\nContext: You are reaching out on behalf of Cyber-Squire, a cybersecurity automation consultancy specializing in:\n- RHEL/AWS infrastructure hardening\n- Zero Trust architecture implementation\n- AI-powered security automation\n- Compliance frameworks (NIST, ISO 27001)\n\nDraft Requirements:\n1. Subject line (< 50 chars, compelling)\n2. Email body (3 short paragraphs max)\n3. Strong CTA for a 15-min discovery call\n4. Professional but conversational tone\n5. Reference specific company context from research\n\nReturn JSON:\n{\n  \"subject\": \"...\",\n  \"body\": \"...\",\n  \"cta\": \"...\",\n  \"personalization_score\": 1-10\n}",
+        "options": {
+          "temperature": 0.8
+        }
+      },
+      "id": "claude-draft-outreach",
+      "name": "Claude - Draft Outreach",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.8,
+      "position": [900, 500],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-cred",
+          "name": "Claude AI (Anthropic)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Webhook').item.json.body.notion_leads_db }}",
+          "mode": "id"
+        },
+        "title": "={{ $('Extract Lead Data').item.json.company_name }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Contact Name",
+              "textValue": "={{ $('Extract Lead Data').item.json.contact_name }}"
+            },
+            {
+              "key": "Contact Title",
+              "textValue": "={{ $('Extract Lead Data').item.json.contact_title }}"
+            },
+            {
+              "key": "Email",
+              "emailValue": "={{ $('Extract Lead Data').item.json.contact_email }}"
+            },
+            {
+              "key": "LinkedIn",
+              "urlValue": "={{ $('Extract Lead Data').item.json.linkedin_url }}"
+            },
+            {
+              "key": "Status",
+              "selectValue": "Draft Ready"
+            },
+            {
+              "key": "Personalization Score",
+              "numberValue": "={{ $json.personalization_score }}"
+            },
+            {
+              "key": "Subject Line",
+              "textValue": "={{ $json.subject }}"
+            },
+            {
+              "key": "Email Draft",
+              "richTextValue": "={{ $json.body }}"
+            },
+            {
+              "key": "Research Notes",
+              "richTextValue": "={{ $('Perplexity - Research Lead').item.json.response }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-to-notion-leads",
+      "name": "Save to Notion Leads DB",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1120, 500],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $('Claude - Draft Outreach').item.json.personalization_score }}",
+              "operation": "largerEqual",
+              "value2": 8
+            }
+          ]
+        }
+      },
+      "id": "check-quality-score",
+      "name": "Quality Score >= 8?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "fromEmail": "outreach@yourdomain.com",
+        "toEmail": "={{ $('Extract Lead Data').item.json.contact_email }}",
+        "subject": "={{ $('Claude - Draft Outreach').item.json.subject }}",
+        "emailType": "text",
+        "message": "={{ $('Claude - Draft Outreach').item.json.body }}",
+        "options": {}
+      },
+      "id": "send-email-auto",
+      "name": "Auto-Send (High Quality)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Save to Notion Leads DB').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status",
+              "selectValue": "Awaiting Manual Review"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "flag-manual-review",
+      "name": "Flag for Manual Review",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1560, 600],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"success\", \"lead_id\": $('Save to Notion Leads DB').item.json.id, \"personalization_score\": $('Claude - Draft Outreach').item.json.personalization_score } }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1780, 500]
+    }
+  ],
+  "connections": {
+    "Lead Intake Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Perplexity - Research Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Perplexity - Research Lead": {
+      "main": [
+        [
+          {
+            "node": "Claude - Draft Outreach",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Draft Outreach": {
+      "main": [
+        [
+          {
+            "node": "Save to Notion Leads DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Notion Leads DB": {
+      "main": [
+        [
+          {
+            "node": "Quality Score >= 8?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Score >= 8?": {
+      "main": [
+        [
+          {
+            "node": "Auto-Send (High Quality)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag for Manual Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Send (High Quality)": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag for Manual Review": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Operation Nuclear",
+      "id": "cd-tag-005"
+    }
+  ],
+  "meta": {
+    "notes": "Automated lead enrichment pipeline: Intake → Perplexity research → Claude drafts personalized outreach → Saves to Notion → Auto-sends if quality score >= 8, otherwise flags for manual review."
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "name": "Security Pulse - AWS Drift Detection",
+  "nodes": [
+    {
+      "parameters": {
+        "interval": [
+          {
+            "type": "days",
+            "value": 1
+          }
+        ]
+      },
+      "id": "trigger-24h",
+      "name": "Trigger: Daily 03:00 UTC",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "region": "us-east-1",
+        "operation": "describeSecurityGroups",
+        "filters": {
+          "Filter": [
+            {
+              "Name": "group-name",
+              "Value": "cd-alpha-engine-sg"
+            }
+          ]
+        }
+      },
+      "id": "aws-sg-scan",
+      "name": "AWS: Scan Security Group",
+      "type": "n8n-nodes-base.aws",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ],
+      "credentials": {
+        "aws": "AWS Credentials"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sg = $input.first().json.SecurityGroups[0];\nconst openRules = [];\n\n// Check SSH (22) for 0.0.0.0/0\nsg.IpPermissions.forEach(rule => {\n  if (rule.FromPort === 22 || rule.ToPort === 22) {\n    rule.IpRanges.forEach(range => {\n      if (range.CidrIp === '0.0.0.0/0') {\n        openRules.push({\n          port: 22,\n          protocol: 'tcp',\n          cidr: '0.0.0.0/0',\n          severity: 'CRITICAL',\n          message: 'SSH exposed to world'\n        });\n      }\n    });\n  }\n});\n\n// Check n8n (5678) for 0.0.0.0/0\nsg.IpPermissions.forEach(rule => {\n  if (rule.FromPort === 5678 || rule.ToPort === 5678) {\n    rule.IpRanges.forEach(range => {\n      if (range.CidrIp === '0.0.0.0/0') {\n        openRules.push({\n          port: 5678,\n          protocol: 'tcp',\n          cidr: '0.0.0.0/0',\n          severity: 'CRITICAL',\n          message: 'n8n exposed to world (should use Cloudflare Tunnel only)'\n        });\n      }\n    });\n  }\n});\n\nreturn {\n  timestamp: new Date().toISOString(),\n  sg_id: sg.GroupId,\n  sg_name: sg.GroupName,\n  violations: openRules,\n  status: openRules.length === 0 ? 'SAFE' : 'COMPROMISED'\n};"
+      },
+      "id": "drift-analyzer",
+      "name": "Analyze: Drift Detection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        750,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "rules": [
+            {
+              "condition": "!= ",
+              "leftValue": "{{ $node['drift-analyzer'].json.status }}",
+              "rightValue": "'SAFE'"
+            }
+          ]
+        }
+      },
+      "id": "check-violations",
+      "name": "IF: Violations Detected?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "body": "{\n  \"title\": \"🚨 SECURITY ALERT: Drift Detected\",\n  \"emoji\": \"🚨\",\n  \"content\": \"AWS Security Group has been modified. 0.0.0.0/0 detected on restricted ports.\",\n  \"properties\": [\n    {\n      \"key\": \"Severity\",\n      \"value\": \"CRITICAL\"\n    },\n    {\n      \"key\": \"Time\",\n      \"value\": \"{{ $node['drift-analyzer'].json.timestamp }}\"\n    },\n    {\n      \"key\": \"Violations\",\n      \"value\": \"{{ $node['drift-analyzer'].json.violations.length }}\"\n    },\n    {\n      \"key\": \"Details\",\n      \"value\": \"{{ JSON.stringify($node['drift-analyzer'].json.violations) }}\"\n    }\n  ]\n}",
+        "database": "Cyber-Squire OS",
+        "table": "Security Pulse",
+        "columns": {
+          "Title": "SECURITY ALERT",\n          \"Status\": \"CRITICAL\",\n          \"Violations\": \"{{ $node['drift-analyzer'].json.violations.length }}\",\n          \"Timestamp\": \"{{ $node['drift-analyzer'].json.timestamp }}\",\n          \"SG_ID\": \"{{ $node['drift-analyzer'].json.sg_id }}\"\n        }
+      },
+      "id": "notion-alert",
+      "name": "Notion: Log CRITICAL Alert",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "message": "🔴 SECURITY BREACH: Your AWS SG has been modified!\n\nDetails: {{ $node['drift-analyzer'].json.violations[0].message }}\n\nImmediate Actions:\n1. Check your AWS console\n2. Verify Cloudflare Tunnel is active\n3. Run terraform apply to revert",
+        "phoneNumber": "+1-YOURPHONENUMBER"
+      },
+      "id": "sms-alert",
+      "name": "SMS: Critical Notification",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "body": "{\n  \"title\": \"✅ Security Audit: PASSED\",\n  \"emoji\": \"✅\",\n  \"content\": \"All AWS security rules are correctly configured. No 0.0.0.0/0 exposed.\"\n}",
+        "database": "Cyber-Squire OS",
+        "table": "Security Pulse",
+        "columns": {
+          "Title\": \"SECURITY PASSED\",\n          \"Status\": \"SAFE\",\n          \"Violations\": \"0\",\n          \"Timestamp\": \"{{ $node['drift-analyzer'].json.timestamp }}\"\n        }
+      },
+      "id": "notion-safe",
+      "name": "Notion: Log SAFE Audit",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "trigger-24h": {
+      "main": [
+        [
+          {
+            "node": "aws-sg-scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "aws-sg-scan": {
+      "main": [
+        [
+          {
+            "node": "drift-analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "drift-analyzer": {
+      "main": [
+        [
+          {
+            "node": "check-violations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check-violations": {
+      "main": [
+        [
+          {
+            "node": "notion-alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "sms-alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "notion-safe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

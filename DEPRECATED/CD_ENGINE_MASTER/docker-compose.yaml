@@ -1,0 +1,155 @@
+# ==========================================
+# ⚠️  LEGACY VERSION - DO NOT USE  ⚠️
+# ==========================================
+# This is an older Docker Compose configuration from an earlier phase of development.
+#
+# **DEPRECATED:** As of 2026-01-29
+# **REPLACEMENT:** Use ../COREDIRECTIVE_ENGINE/docker-compose.yaml instead
+#
+# Key differences from current production config:
+# - Uses underscore naming (cd_postgres vs cd-service-db)
+# - No Moltbot service definition
+# - Cloudflare Tunnel commented out
+# - Different volume naming conventions
+#
+# See CD_ENGINE_MASTER/README.md for full migration details.
+#
+# **ALL PRODUCTION DEPLOYMENTS NOW USE COREDIRECTIVE_ENGINE/**
+# ==========================================
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # DATA LAYER: PostgreSQL 16
+  # ==========================================
+  # Handles concurrent reads/writes for Operation Nuclear scaling
+  cd_postgres:
+    image: postgres:16-alpine
+    container_name: cd_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${CD_DB_USER}
+      POSTGRES_PASSWORD: ${CD_DB_PASSWORD}
+      POSTGRES_DB: ${CD_DB_NAME}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - ./CD_DB_DATA:/var/lib/postgresql/data
+      - ./CD_BACKUPS:/backups
+    networks:
+      - cd_internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CD_DB_USER} -d ${CD_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      component: "data-layer"
+      environment: "production"
+
+  # ==========================================
+  # LOGIC LAYER: n8n Orchestration Engine
+  # ==========================================
+  # Command center for Operation Nuclear & CoreDirective workflows
+  cd_n8n:
+    image: n8nio/n8n:latest
+    container_name: cd_n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      # Database Configuration
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=${CD_DB_HOST}
+      - DB_POSTGRESDB_PORT=${CD_DB_PORT}
+      - DB_POSTGRESDB_DATABASE=${CD_DB_NAME}
+      - DB_POSTGRESDB_USER=${CD_DB_USER}
+      - DB_POSTGRESDB_PASSWORD=${CD_DB_PASSWORD}
+      
+      # Security & Encryption
+      - N8N_ENCRYPTION_KEY=${CD_N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${CD_N8N_JWT_SECRET}
+      
+      # Admin User (First-time setup)
+      - N8N_DEFAULT_USER_EMAIL=${CD_N8N_USER}
+      - N8N_DEFAULT_USER_PASSWORD=${CD_N8N_PASS}
+      
+      # Disable webhook auto-creation (security hardening)
+      - N8N_WEBHOOK_URL=http://localhost:5678
+      - N8N_EXECUTIONS_DATA_PRUNE=true
+      - N8N_EXECUTIONS_DATA_MAX_AGE=168
+      
+      # AI Integration (Ollama)
+      - OLLAMA_HOST=http://cd_brain_ollama:11434
+    
+    volumes:
+      - ./CD_N8N_DATA:/home/node/.n8n
+      - ${CD_STORAGE_PATH}:/data/media
+    
+    depends_on:
+      cd_postgres:
+        condition: service_healthy
+    
+    networks:
+      - cd_internal_net
+    
+    labels:
+      component: "logic-layer"
+      environment: "production"
+
+  # ==========================================
+  # AI LAYER: Ollama + Qwen 2.5 Coder
+  # ==========================================
+  # Local inference engine for "brutal honesty" outreach & content generation
+  cd_brain_ollama:
+    image: ollama/ollama:latest
+    container_name: cd_brain_ollama
+    restart: always
+    volumes:
+      - ./CD_OLLAMA_DATA:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - cd_internal_net
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    labels:
+      component: "ai-layer"
+      environment: "production"
+
+  # ==========================================
+  # OPTIONAL: Cloudflare Tunnel (Future)
+  # ==========================================
+  # Uncomment when ready for remote access hardening
+  # cd_cloudflare_tunnel:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: cd_cloudflare_tunnel
+  #   restart: always
+  #   command: tunnel run
+  #   environment:
+  #     - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+  #   networks:
+  #     - cd_internal_net
+  #   labels:
+  #     component: "security-layer"
+
+# ==========================================
+# INTERNAL NETWORK (Isolated Communication)
+# ==========================================
+networks:
+  cd_internal_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+# ==========================================
+# VOLUMES (Persistent Storage)
+# ==========================================
+volumes:
+  cd_db_persistent:
+    driver: local
+  cd_media_storage:
+    driver: local
+  cd_ollama_cache:
+    driver: local

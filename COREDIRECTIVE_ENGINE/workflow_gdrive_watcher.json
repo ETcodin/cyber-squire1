@@ -1,0 +1,237 @@
+{
+  "name": "📂 Google Drive File Watcher",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Check Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "command": "find /data/media -type f -newermt '5 minutes ago' -printf '%p|%T@|%s\\n'"
+      },
+      "id": "scan-new-files",
+      "name": "Scan for New Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = [];\nconst lines = $input.item.json.stdout.split('\\n').filter(l => l);\n\nfor (const line of lines) {\n  const [path, mtime, size] = line.split('|');\n  const ext = path.split('.').pop().toLowerCase();\n  \n  files.push({\n    path: path,\n    filename: path.split('/').pop(),\n    extension: ext,\n    size_bytes: parseInt(size),\n    modified: new Date(parseFloat(mtime) * 1000).toISOString(),\n    category: getCategoryByExtension(ext)\n  });\n}\n\nfunction getCategoryByExtension(ext) {\n  const video = ['mp4', 'mov', 'avi', 'mkv', 'webm'];\n  const audio = ['mp3', 'wav', 'aac', 'm4a'];\n  const docs = ['pdf', 'docx', 'txt', 'md'];\n  const images = ['jpg', 'jpeg', 'png', 'gif', 'svg'];\n  \n  if (video.includes(ext)) return 'video';\n  if (audio.includes(ext)) return 'audio';\n  if (docs.includes(ext)) return 'document';\n  if (images.includes(ext)) return 'image';\n  return 'other';\n}\n\nreturn files;"
+      },
+      "id": "parse-files",
+      "name": "Parse File Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.category }}",
+              "operation": "equals",
+              "value2": "video"
+            }
+          ]
+        }
+      },
+      "id": "route-by-type",
+      "name": "Route by File Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "trigger-data",
+              "name": "trigger_type",
+              "value": "youtube_video_upload",
+              "type": "string"
+            },
+            {
+              "id": "file-path",
+              "name": "file_path",
+              "value": "={{ $json.path }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prep-video-data",
+      "name": "Prepare Video Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-n8n:5678/webhook/youtube-content-factory",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file_path",
+              "value": "={{ $json.file_path }}"
+            },
+            {
+              "name": "filename",
+              "value": "={{ $('Parse File Metadata').item.json.filename }}"
+            },
+            {
+              "name": "size_bytes",
+              "value": "={{ $('Parse File Metadata').item.json.size_bytes }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "trigger-youtube-workflow",
+      "name": "Trigger YouTube Factory",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Schedule Trigger').item.json.notion_media_db }}",
+          "mode": "id"
+        },
+        "title": "={{ $('Parse File Metadata').item.json.filename }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "File Path",
+              "textValue": "={{ $json.path }}"
+            },
+            {
+              "key": "Category",
+              "selectValue": "={{ $json.category }}"
+            },
+            {
+              "key": "Size (MB)",
+              "numberValue": "={{ $json.size_bytes / 1024 / 1024 }}"
+            },
+            {
+              "key": "Status",
+              "selectValue": "Processing"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-to-notion-media",
+      "name": "Log to Notion Media DB",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1120, 500],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Check Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Scan for New Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan for New Files": {
+      "main": [
+        [
+          {
+            "node": "Parse File Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse File Metadata": {
+      "main": [
+        [
+          {
+            "node": "Route by File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by File Type": {
+      "main": [
+        [
+          {
+            "node": "Prepare Video Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to Notion Media DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Video Data": {
+      "main": [
+        [
+          {
+            "node": "Trigger YouTube Factory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Google Drive",
+      "id": "cd-tag-004"
+    }
+  ],
+  "meta": {
+    "notes": "Monitors /data/media (Google Drive mount) for new files every 5 minutes. Routes videos to YouTube Factory, logs all files to Notion Media DB."
+  }
+}

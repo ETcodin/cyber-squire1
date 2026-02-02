@@ -1,0 +1,262 @@
+{
+  "name": "🤖 Moltbot Workflow Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "moltbot-command",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Moltbot Command Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "moltbot-workflow-gen"
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b-instruct-q4_K_M",
+        "prompt": "=You are a workflow automation expert. The user wants to create an n8n workflow.\n\nUser Request: {{ $json.body.command }}\n\nAnalyze this request and determine:\n1. What trigger should be used (webhook, schedule, manual, file watcher)\n2. What services need to be connected (APIs from credentials vault)\n3. What transformations are needed\n4. What the output should be\n\nRespond ONLY with a JSON object in this format:\n{\n  \"workflow_name\": \"Brief descriptive name\",\n  \"trigger_type\": \"webhook|schedule|manual|file\",\n  \"services\": [\"anthropic\", \"github\", \"notion\", etc],\n  \"steps\": [\"Step 1 description\", \"Step 2 description\"],\n  \"complexity\": \"simple|medium|complex\"\n}",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "qwen-analyzer",
+      "name": "Qwen - Analyze Request",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [460, 400],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Ollama Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.complexity }}",
+              "operation": "equals",
+              "value2": "complex"
+            }
+          ]
+        }
+      },
+      "id": "complexity-router",
+      "name": "Route by Complexity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "prompt": "=You are an expert n8n workflow architect. Generate a complete n8n workflow JSON definition.\n\nWorkflow Request:\nName: {{ $json.workflow_name }}\nTrigger: {{ $json.trigger_type }}\nServices: {{ $json.services }}\nSteps: {{ $json.steps }}\n\nGenerate a valid n8n workflow JSON with:\n- Proper node structure\n- Credential references matching our vault (Claude AI (Anthropic), GitHub CoreDirective, Notion Cyber-Squire API, etc)\n- Connection mappings\n- Position coordinates\n\nReturn ONLY valid JSON, no markdown.",
+        "options": {}
+      },
+      "id": "claude-generator-complex",
+      "name": "Claude - Generate Complex Workflow",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.8,
+      "position": [900, 300],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-cred",
+          "name": "Claude AI (Anthropic)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b-instruct-q4_K_M",
+        "prompt": "=Generate a simple n8n workflow JSON for:\n\nWorkflow: {{ $json.workflow_name }}\nTrigger: {{ $json.trigger_type }}\nServices: {{ $json.services }}\nSteps: {{ $json.steps }}\n\nReturn valid n8n workflow JSON only.",
+        "options": {}
+      },
+      "id": "qwen-generator-simple",
+      "name": "Qwen - Generate Simple Workflow",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [900, 500],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Ollama Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://cd-service-n8n:5678/api/v1/workflows",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "35d4a05c-37c6-4d14-838e-9282687b4c43"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "create-workflow-api",
+      "name": "Create Workflow via API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Webhook').item.json.body.notion_log_page }}",
+          "mode": "id"
+        },
+        "title": "=✅ Workflow Created: {{ $json.workflow_name }}",
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "paragraph",
+              "richText": true,
+              "text": "=New workflow generated via Moltbot\n\nWorkflow ID: {{ $json.id }}\nTrigger: {{ $json.trigger_type }}\nServices: {{ $json.services }}\n\nCreated: {{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "log-to-notion",
+      "name": "Log to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1340, 400],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, 400]
+    }
+  ],
+  "connections": {
+    "Moltbot Command Webhook": {
+      "main": [
+        [
+          {
+            "node": "Qwen - Analyze Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen - Analyze Request": {
+      "main": [
+        [
+          {
+            "node": "Route by Complexity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Complexity": {
+      "main": [
+        [
+          {
+            "node": "Claude - Generate Complex Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Qwen - Generate Simple Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Generate Complex Workflow": {
+      "main": [
+        [
+          {
+            "node": "Create Workflow via API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen - Generate Simple Workflow": {
+      "main": [
+        [
+          {
+            "node": "Create Workflow via API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Workflow via API": {
+      "main": [
+        [
+          {
+            "node": "Log to Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Notion": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Moltbot",
+      "id": "cd-tag-003"
+    }
+  ]
+}

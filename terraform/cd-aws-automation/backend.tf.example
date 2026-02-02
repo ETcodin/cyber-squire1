@@ -1,0 +1,167 @@
+# --- TERRAFORM BACKEND CONFIGURATION (CD-Standard) ---
+# S3 backend with KMS encryption and native state locking (Terraform 1.10+)
+#
+# SECURITY NOTICE:
+# This is an EXAMPLE file with placeholders. DO NOT commit the real backend.tf with actual KMS ARN.
+#
+# Setup Instructions:
+# 1. Create KMS key and S3 bucket manually (see docs/PRIVATE_OPERATIONS_MANUAL.md Section 2)
+# 2. Copy this file: cp backend.tf.example backend.tf
+# 3. Replace placeholders in backend.tf with your real values
+# 4. Add backend.tf to .gitignore to prevent accidental commits
+#
+# Placeholders to Replace:
+#   REPLACE_WITH_BUCKET_NAME          → Your S3 bucket name (e.g., cd-str-tfstate-01-YOUR_ACCOUNT_ID)
+#   REPLACE_WITH_REAL_KMS_KEY_ARN     → Your KMS key ARN (e.g., arn:aws:kms:us-east-1:123456789012:key/...)
+
+terraform {
+  required_version = ">= 1.10.0"
+
+  # S3 Backend with KMS Encryption
+  backend "s3" {
+    bucket  = "REPLACE_WITH_BUCKET_NAME"
+    key     = "prod/cd-aws-automation.tfstate"
+    region  = "us-east-1"
+    encrypt = true
+
+    # KMS Key for server-side encryption
+    kms_key_id = "REPLACE_WITH_REAL_KMS_KEY_ARN"
+
+    # Terraform 1.10+ native S3 state locking (no DynamoDB required)
+    # Uses optimistic locking with ETag
+    use_lockfile = true
+
+    # Optional: Enable versioning on S3 bucket for point-in-time recovery
+    # (This setting is informational; versioning is enabled on the bucket itself)
+  }
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+# --- BACKEND SETUP INSTRUCTIONS ---
+#
+# Step 1: Create KMS Key (Manual)
+# -------------------------------------
+# aws kms create-key \
+#   --description "Terraform state encryption for CD-AWS-AUTOMATION" \
+#   --key-usage ENCRYPT_DECRYPT \
+#   --origin AWS_KMS \
+#   --tags TagKey=Name,TagValue=cd-iam-kms-tfstate
+#
+# # Save the KeyId from output
+# # Example: arn:aws:kms:us-east-1:123456789012:key/abcd1234-5678-90ef-ghij-klmnopqrstuv
+#
+# # Create alias for easier reference
+# aws kms create-alias \
+#   --alias-name alias/cd-iam-kms-tfstate \
+#   --target-key-id [YOUR_KEY_ID]
+#
+# Step 2: Create S3 Bucket (Manual)
+# -------------------------------------
+# # Create bucket (must be globally unique)
+# aws s3api create-bucket \
+#   --bucket REPLACE_WITH_BUCKET_NAME \
+#   --region us-east-1
+#
+# # Enable versioning
+# aws s3api put-bucket-versioning \
+#   --bucket REPLACE_WITH_BUCKET_NAME \
+#   --versioning-configuration Status=Enabled
+#
+# # Enable server-side encryption with KMS
+# aws s3api put-bucket-encryption \
+#   --bucket REPLACE_WITH_BUCKET_NAME \
+#   --server-side-encryption-configuration '{
+#     "Rules": [{
+#       "ApplyServerSideEncryptionByDefault": {
+#         "SSEAlgorithm": "aws:kms",
+#         "KMSMasterKeyID": "alias/cd-iam-kms-tfstate"
+#       }
+#     }]
+#   }'
+#
+# # Block public access (security hardening)
+# aws s3api put-public-access-block \
+#   --bucket REPLACE_WITH_BUCKET_NAME \
+#   --public-access-block-configuration \
+#     "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+#
+# Step 3: Update This File
+# -------------------------------------
+# cp backend.tf.example backend.tf
+# nano backend.tf
+# # Replace REPLACE_WITH_BUCKET_NAME with your actual bucket name
+# # Replace REPLACE_WITH_REAL_KMS_KEY_ARN with your actual KMS key ARN
+#
+# Step 4: Initialize Terraform
+# -------------------------------------
+# terraform init
+# # Terraform will prompt to migrate existing state (if any)
+#
+# Step 5: Verify Backend
+# -------------------------------------
+# # Check that state is stored in S3
+# aws s3 ls s3://REPLACE_WITH_BUCKET_NAME/prod/
+# # Expected: cd-aws-automation.tfstate
+#
+# # Check state lock file
+# aws s3 ls s3://REPLACE_WITH_BUCKET_NAME/prod/.terraform.lock.info
+#
+# --- BENEFITS OF S3 BACKEND ---
+#
+# 1. Shared State: Multiple operators can collaborate on infrastructure
+# 2. State Locking: Prevents concurrent modifications (via Terraform 1.10+ native locking)
+# 3. Encryption at Rest: KMS encryption protects sensitive data in state file
+# 4. Versioning: Point-in-time recovery if state is corrupted
+# 5. No Local State: Eliminates risk of accidentally committing secrets
+#
+# --- COST ANALYSIS ---
+#
+# S3 Storage: $0.023/GB/month × ~0.001 GB (1 MB state file) = $0.00002/month
+# S3 Requests: $0.005/1,000 requests × ~100 requests/month = $0.0005/month
+# KMS Key: $1/month (flat rate)
+# Total: ~$1/month
+#
+# Alternative (DynamoDB Locking - Legacy):
+#   - DynamoDB table: $0.25/month (provisioned capacity)
+#   - Terraform 1.10+ eliminates this cost with native S3 locking
+#
+# --- RECOVERY PROCEDURES ---
+#
+# If State is Corrupted:
+# ----------------------
+# # List all state versions
+# aws s3api list-object-versions \
+#   --bucket REPLACE_WITH_BUCKET_NAME \
+#   --prefix prod/cd-aws-automation.tfstate
+#
+# # Restore previous version
+# aws s3api copy-object \
+#   --bucket REPLACE_WITH_BUCKET_NAME \
+#   --copy-source "REPLACE_WITH_BUCKET_NAME/prod/cd-aws-automation.tfstate?versionId=VERSION_ID" \
+#   --key prod/cd-aws-automation.tfstate
+#
+# If KMS Key is Scheduled for Deletion:
+# --------------------------------------
+# aws kms cancel-key-deletion --key-id [KEY_ID]
+# # AWS enforces 7-30 day deletion window, giving time to recover
+#
+# --- SECURITY BEST PRACTICES ---
+#
+# 1. NEVER commit backend.tf with real KMS ARN to version control
+# 2. Add backend.tf to .gitignore
+# 3. Use IAM policies to restrict KMS key access
+# 4. Enable CloudTrail logging for KMS key usage
+# 5. Rotate KMS keys annually
+# 6. Use separate KMS keys for dev/staging/prod environments
+#
+# --- COMPLIANCE ALIGNMENT ---
+#
+# - CIS AWS Foundations Benchmark: Section 2.7 (Encryption at Rest)
+# - NIST 800-53: SC-28 (Protection of Information at Rest)
+# - SOC 2 Type II: CC6.1 (Logical and Physical Access Controls)

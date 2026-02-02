@@ -1,0 +1,76 @@
+# ============================================
+# SECURITY: AWS & Terraform Secrets
+# ============================================
+*.pem
+*.key
+*.pfx
+*.p12
+.env
+.env.*
+!.env.template
+!.env.example
+
+# Terraform state (contains infrastructure secrets)
+terraform.tfstate
+terraform.tfstate.*
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# Backend configuration with real credentials
+terraform/cd-aws-automation/backend.tf
+
+# ============================================
+# SECURITY: Credential Vaults (API Keys)
+# ============================================
+*credentials*.json
+*secrets*.json
+*vault*.json
+*apikeys*.json
+
+# ============================================
+# SECURITY: Private Documentation
+# ============================================
+docs/PRIVATE_OPERATIONS_MANUAL.md
+*PRIVATE*.md
+*SECRET*.md
+*CREDENTIAL*.md
+
+# ============================================
+# IDE & Editor
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+
+# ============================================
+# OS Generated
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# ============================================
+# Node/NPM (if applicable)
+# ============================================
+node_modules/
+npm-debug.log
+
+# ============================================
+# Python (if applicable)
+# ============================================
+__pycache__/
+*.py[cod]
+.venv/
+venv/

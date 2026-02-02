@@ -1,0 +1,4 @@
+ingress:
+  - hostname: n8n.yourdomain.com
+    service: http://cd-service-n8n:5678
+  - service: http_status:404

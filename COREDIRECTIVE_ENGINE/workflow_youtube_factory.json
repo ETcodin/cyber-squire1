@@ -1,0 +1,306 @@
+{
+  "name": "🎬 YouTube Content Factory",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "youtube-content-factory",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-video-upload",
+      "name": "Video Upload Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 600],
+      "webhookId": "youtube-content-factory"
+    },
+    {
+      "parameters": {
+        "command": "ffmpeg -i \"={{ $json.body.file_path }}\" -vn -acodec libmp3lame -q:a 2 \"/tmp/{{ $json.body.filename }}.mp3\""
+      },
+      "id": "extract-audio",
+      "name": "Extract Audio (ffmpeg)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [460, 600]
+    },
+    {
+      "parameters": {
+        "model": "gemini-2.0-flash-exp",
+        "prompt": "=Transcribe this audio file and return a perfect, punctuated transcript.\n\nAudio File: /tmp/{{ $('Webhook').item.json.body.filename }}.mp3\n\nRequirements:\n- Accurate speech-to-text\n- Proper punctuation and capitalization\n- Speaker labels if multiple speakers detected\n- Timestamps every 30 seconds\n\nReturn clean, readable transcript.",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "gemini-transcribe",
+      "name": "Gemini - Transcribe Audio",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGemini",
+      "typeVersion": 1,
+      "position": [680, 600],
+      "credentials": {
+        "googleAiApi": {
+          "id": "google-ai-cred",
+          "name": "Google AI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b-instruct-q4_K_M",
+        "prompt": "=Analyze this video transcript and generate YouTube metadata.\n\nTranscript:\n{{ $json.response }}\n\nGenerate:\n1. Compelling title (< 70 chars, SEO-optimized)\n2. Description (3 paragraphs, keyword-rich)\n3. 10 relevant tags\n4. 5 TikTok/Shorts script variations (15-30 seconds each)\n5. Thumbnail text suggestions (3-5 words)\n\nReturn JSON:\n{\n  \"title\": \"...\",\n  \"description\": \"...\",\n  \"tags\": [...],\n  \"shorts_scripts\": [...],\n  \"thumbnail_text\": [...]\n}",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "qwen-metadata",
+      "name": "Qwen - Generate Metadata",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [900, 600],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Ollama Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Webhook').item.json.body.notion_content_db }}",
+          "mode": "id"
+        },
+        "title": "={{ $json.title }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Video File",
+              "textValue": "={{ $('Webhook').item.json.body.file_path }}"
+            },
+            {
+              "key": "Status",
+              "selectValue": "Ready to Publish"
+            },
+            {
+              "key": "Platform",
+              "multiSelectValue": ["YouTube", "TikTok", "Instagram"]
+            },
+            {
+              "key": "Description",
+              "richTextValue": "={{ $json.description }}"
+            },
+            {
+              "key": "Tags",
+              "multiSelectValue": "={{ $json.tags }}"
+            },
+            {
+              "key": "Transcript",
+              "richTextValue": "={{ $('Gemini - Transcribe Audio').item.json.response }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-to-notion-content",
+      "name": "Save to Notion Content DB",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1120, 600],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const scripts = $('Qwen - Generate Metadata').item.json.shorts_scripts;\nconst results = [];\n\nfor (let i = 0; i < scripts.length; i++) {\n  results.push({\n    script_number: i + 1,\n    script: scripts[i],\n    video_id: $('Save to Notion Content DB').item.json.id,\n    original_file: $('Webhook').item.json.body.file_path\n  });\n}\n\nreturn results;"
+      },
+      "id": "split-shorts-scripts",
+      "name": "Split Shorts Scripts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Webhook').item.json.body.notion_shorts_db }}",
+          "mode": "id"
+        },
+        "title": "=Short {{ $json.script_number }}: {{ $('Qwen - Generate Metadata').item.json.title }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Script",
+              "richTextValue": "={{ $json.script }}"
+            },
+            {
+              "key": "Parent Video",
+              "relationValue": ["={{ $json.video_id }}"]
+            },
+            {
+              "key": "Status",
+              "selectValue": "Draft"
+            },
+            {
+              "key": "Platform",
+              "multiSelectValue": ["TikTok", "YouTube Shorts", "Instagram Reels"]
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "save-shorts-to-notion",
+      "name": "Save Shorts to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1560, 600],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "rm -f \"/tmp/{{ $('Webhook').item.json.body.filename }}.mp3\""
+      },
+      "id": "cleanup-temp",
+      "name": "Cleanup Temp Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1780, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"success\", \"content_id\": $('Save to Notion Content DB').item.json.id, \"shorts_count\": $('Qwen - Generate Metadata').item.json.shorts_scripts.length } }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 600]
+    }
+  ],
+  "connections": {
+    "Video Upload Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Audio (ffmpeg)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Audio (ffmpeg)": {
+      "main": [
+        [
+          {
+            "node": "Gemini - Transcribe Audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - Transcribe Audio": {
+      "main": [
+        [
+          {
+            "node": "Qwen - Generate Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen - Generate Metadata": {
+      "main": [
+        [
+          {
+            "node": "Save to Notion Content DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Notion Content DB": {
+      "main": [
+        [
+          {
+            "node": "Split Shorts Scripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Shorts Scripts": {
+      "main": [
+        [
+          {
+            "node": "Save Shorts to Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Shorts to Notion": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Temp Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Temp Files": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "YouTube",
+      "id": "cd-tag-006"
+    },
+    {
+      "name": "Content Production",
+      "id": "cd-tag-007"
+    }
+  ],
+  "meta": {
+    "notes": "Full content production pipeline: Video upload → Audio extraction → Gemini transcription → Qwen metadata generation → Notion organization → Shorts script creation. Triggered by Google Drive watcher."
+  }
+}

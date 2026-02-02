@@ -1,0 +1,103 @@
+# --- TERRAFORM VARIABLES EXAMPLE (CD-AWS-AUTOMATION) ---
+# Copy this file to terraform.tfvars and update with your actual values
+#
+# Usage:
+#   cp terraform.tfvars.example terraform.tfvars
+#   nano terraform.tfvars  # Edit with your values
+#   terraform plan
+#   terraform apply
+
+# --- REQUIRED VARIABLES ---
+
+# Your public IP address for SSH access (required)
+# Get your IP: curl checkip.amazonaws.com
+my_ip = "203.0.113.45/32"  # EXAMPLE IP - Replace with yours
+
+# --- OPTIONAL VARIABLES (Uncomment to Override Defaults) ---
+
+# AWS region (default: us-east-1)
+# aws_region = "us-east-1"
+
+# VPC and subnet configuration (defaults are sensible for most deployments)
+# vpc_cidr            = "10.0.0.0/16"
+# public_subnet_cidr  = "10.0.10.0/24"
+# private_subnet_cidr = "10.0.20.0/24"
+# availability_zone   = "us-east-1a"
+
+# EC2 key pair name (default: cyber-squire-ops)
+# key_name = "cyber-squire-ops"
+
+# NAT instance type (default: t3.nano for cost optimization)
+# Options: t3.nano ($3.80/mo), t3.micro ($7.50/mo), t4g.nano ($3.10/mo - ARM)
+# nat_instance_type = "t3.nano"
+
+# COREDIRECTIVE_ENGINE instance type (default: t3.xlarge for 16GB RAM)
+# Options: t3.xlarge ($122/mo), t3.2xlarge ($244/mo), m5.xlarge ($140/mo)
+# cdae_instance_type = "t3.xlarge"
+
+# COREDIRECTIVE_ENGINE root volume size (default: 100GB)
+# Minimum: 50GB (Docker + Ollama models), Maximum: 500GB
+# cdae_volume_size = 100
+
+# Project name for resource tagging (default: CD-AWS-AUTOMATION)
+# project_name = "CD-AWS-AUTOMATION"
+
+# Environment name (default: prod)
+# Options: dev, staging, prod
+# environment = "prod"
+
+# --- NOTES ---
+#
+# 1. DO NOT commit terraform.tfvars to version control (add to .gitignore)
+# 2. Use terraform.tfvars.example as a template for team members
+# 3. For CI/CD, use environment variables: TF_VAR_my_ip=203.0.113.45/32
+# 4. For multiple environments, use separate .tfvars files:
+#    - terraform.tfvars.dev
+#    - terraform.tfvars.staging
+#    - terraform.tfvars.prod
+#
+#    Usage: terraform apply -var-file="terraform.tfvars.prod"
+#
+# 5. Get your current IP:
+#    curl checkip.amazonaws.com
+#    OR
+#    curl ifconfig.me
+#
+# 6. For dynamic IP (changes frequently), consider:
+#    - Using AWS Systems Manager Session Manager (no SSH port needed)
+#    - Setting up a VPN for static IP
+#    - Using a bastion host with Elastic IP
+#
+# --- COST ESTIMATION ---
+#
+# With default values:
+#   - CDAE Instance (t3.xlarge):  $122/month
+#   - NAT Instance (t3.nano):     $3.80/month
+#   - EBS Volume (100GB gp3):     $8/month
+#   - Data Transfer (~50GB):      $5/month
+#   Total:                        ~$139/month
+#
+# Savings vs AWS NAT Gateway:     $28/month ($336/year)
+#
+# --- EXAMPLE CONFIGURATIONS ---
+#
+# Development Environment (cost-optimized):
+# my_ip = "203.0.113.45/32"
+# cdae_instance_type = "t3.large"      # $61/mo (8GB RAM, sufficient for dev)
+# cdae_volume_size = 50                # $4/mo (minimal storage)
+# nat_instance_type = "t4g.nano"       # $3.10/mo (ARM, cheaper)
+# environment = "dev"
+#
+# Production Environment (performance-optimized):
+# my_ip = "203.0.113.45/32"
+# cdae_instance_type = "m5.2xlarge"    # $280/mo (32GB RAM, better CPU)
+# cdae_volume_size = 200               # $16/mo (more storage)
+# nat_instance_type = "t3.micro"       # $7.50/mo (higher throughput)
+# environment = "prod"
+#
+# Staging Environment (balanced):
+# my_ip = "203.0.113.45/32"
+# cdae_instance_type = "t3.xlarge"     # $122/mo (16GB RAM, standard)
+# cdae_volume_size = 100               # $8/mo (standard storage)
+# nat_instance_type = "t3.nano"        # $3.80/mo (cost-optimized)
+# environment = "staging"

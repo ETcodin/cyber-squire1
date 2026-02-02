@@ -1,0 +1,325 @@
+{
+  "name": "🧠 AI Intelligence Router (Qwen → Gemini → Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-router",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-ai-request",
+      "name": "AI Request Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 900],
+      "webhookId": "ai-router"
+    },
+    {
+      "parameters": {
+        "jsCode": "const prompt = $json.body.prompt;\nconst context_size = $json.body.context_size || 0;\nconst complexity = $json.body.complexity || 'auto';\nconst priority = $json.body.priority || 'standard';\n\n// Routing logic\nlet route = 'qwen';\nlet reason = 'Default: Cost-effective local processing';\n\nif (complexity === 'strategic' || priority === 'critical') {\n  route = 'claude';\n  reason = 'Strategic task requires premium intelligence';\n} else if (context_size > 100000 || prompt.includes('analyze document') || prompt.includes('video transcript')) {\n  route = 'gemini';\n  reason = 'Large context window required';\n} else if (complexity === 'complex' && priority === 'high') {\n  route = 'claude';\n  reason = 'Complex high-priority task';\n}\n\nreturn {\n  prompt: prompt,\n  route: route,\n  reason: reason,\n  context_size: context_size,\n  complexity: complexity,\n  priority: priority,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "routing-logic",
+      "name": "Routing Logic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 900]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.route }}",
+              "operation": "equals",
+              "value2": "claude"
+            }
+          ]
+        }
+      },
+      "id": "route-switch",
+      "name": "Route to AI",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 900]
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b-instruct-q4_K_M",
+        "prompt": "={{ $('Routing Logic').item.json.prompt }}",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "qwen-process",
+      "name": "Qwen (Local/Free)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [900, 800],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Ollama Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gemini-2.0-flash-exp",
+        "prompt": "={{ $('Routing Logic').item.json.prompt }}",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "gemini-process",
+      "name": "Gemini (Large Context)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGemini",
+      "typeVersion": 1,
+      "position": [900, 900],
+      "credentials": {
+        "googleAiApi": {
+          "id": "google-ai-cred",
+          "name": "Google AI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "prompt": "={{ $('Routing Logic').item.json.prompt }}",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "claude-process",
+      "name": "Claude (Strategic)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.8,
+      "position": [900, 1000],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-cred",
+          "name": "Claude AI (Anthropic)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "response-data",
+              "name": "response",
+              "value": "={{ $json.response }}",
+              "type": "string"
+            },
+            {
+              "id": "model-used",
+              "name": "model_used",
+              "value": "={{ $('Routing Logic').item.json.route }}",
+              "type": "string"
+            },
+            {
+              "id": "routing-reason",
+              "name": "routing_reason",
+              "value": "={{ $('Routing Logic').item.json.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "merge-response",
+      "name": "Merge Response Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 900]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Webhook').item.json.body.notion_ai_log_db }}",
+          "mode": "id"
+        },
+        "title": "=AI Request {{ $now.toFormat('yyyy-MM-dd HH:mm') }}",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Model Used",
+              "selectValue": "={{ $json.model_used }}"
+            },
+            {
+              "key": "Routing Reason",
+              "textValue": "={{ $json.routing_reason }}"
+            },
+            {
+              "key": "Prompt Preview",
+              "textValue": "={{ $('Routing Logic').item.json.prompt.substring(0, 100) }}..."
+            },
+            {
+              "key": "Response Preview",
+              "textValue": "={{ $json.response.substring(0, 200) }}..."
+            },
+            {
+              "key": "Timestamp",
+              "dateValue": "={{ $json.timestamp }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-to-notion",
+      "name": "Log AI Usage to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1340, 900],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $('Merge Response Data').item.json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Return Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, 900]
+    }
+  ],
+  "connections": {
+    "AI Request Webhook": {
+      "main": [
+        [
+          {
+            "node": "Routing Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing Logic": {
+      "main": [
+        [
+          {
+            "node": "Route to AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route to AI": {
+      "main": [
+        [
+          {
+            "node": "Claude (Strategic)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gemini (Large Context)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Qwen (Local/Free)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen (Local/Free)": {
+      "main": [
+        [
+          {
+            "node": "Merge Response Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini (Large Context)": {
+      "main": [
+        [
+          {
+            "node": "Merge Response Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude (Strategic)": {
+      "main": [
+        [
+          {
+            "node": "Merge Response Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Response Data": {
+      "main": [
+        [
+          {
+            "node": "Log AI Usage to Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI Usage to Notion": {
+      "main": [
+        [
+          {
+            "node": "Return Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "AI Router",
+      "id": "cd-tag-012"
+    }
+  ],
+  "meta": {
+    "notes": "Intelligent AI routing system: Analyzes request complexity and context size → Routes to Qwen (90% of requests, $0 cost) → Gemini for large context → Claude for strategic/critical tasks. Logs all usage to Notion for cost tracking."
+  }
+}

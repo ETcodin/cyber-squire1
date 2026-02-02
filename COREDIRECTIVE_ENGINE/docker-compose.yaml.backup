@@ -1,0 +1,128 @@
+  cd-service-moltbot:
+    build:
+      context: ./moltbot
+      dockerfile: Dockerfile
+    container_name: cd-service-moltbot
+    restart: always
+    ports:
+      - "18789:18789"
+    environment:
+      - OLLAMA_HOST=http://cd-service-ollama:11434
+      - N8N_HOST=http://cd-service-n8n:5678
+      - GATEWAY_TOKEN=${CD_MOLT_TOKEN}
+    volumes:
+      - ./CD_VOL_MOLT:/root/.moltbot:z
+    depends_on:
+      - cd-service-ollama
+      - cd-service-n8n
+    networks:
+      - cd-net
+
+version: '3.8'
+services:
+  cd-service-db:
+    image: postgres:16-alpine
+    container_name: cd-service-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${CD_DB_USER}
+      POSTGRES_PASSWORD: ${CD_DB_PASS}
+      POSTGRES_DB: ${CD_DB_NAME}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - ./CD_VOL_POSTGRES:/var/lib/postgresql/data:z
+      - ./CD_BACKUPS:/backups:z
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CD_DB_USER} -d ${CD_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cd-net
+
+  cd-service-n8n:
+    image: n8nio/n8n:latest
+    container_name: cd-service-n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=cd-service-db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${CD_DB_NAME}
+      - DB_POSTGRESDB_USER=${CD_DB_USER}
+      - DB_POSTGRESDB_PASSWORD=${CD_DB_PASS}
+      - N8N_ENCRYPTION_KEY=${CD_N8N_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${CD_N8N_JWT}
+      - N8N_DEFAULT_USER_EMAIL=${CD_N8N_USER}
+      - N8N_DEFAULT_USER_PASSWORD=${CD_N8N_PASS}
+      - N8N_WEBHOOK_URL=https://n8n.tigouetheory.com
+      - OLLAMA_HOST=http://cd-service-ollama:11434
+    volumes:
+      - ./CD_VOL_N8N:/home/node/.n8n:z
+      - ${CD_STORAGE_PATH}:/data/media:z
+    depends_on:
+      cd-service-db:
+        condition: service_healthy
+    networks:
+      - cd-net
+
+  cd-service-ollama:
+    image: ollama/ollama:latest
+    container_name: cd-service-ollama
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./CD_VOL_OLLAMA:/root/.ollama:z
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      - cd-net
+
+  cd-service-moltbot:
+    build:
+      context: ./moltbot
+      dockerfile: Dockerfile
+    container_name: cd-service-moltbot
+    restart: always
+    ports:
+      - "18789:18789"
+    environment:
+      - OLLAMA_HOST=http://cd-service-ollama:11434
+      - N8N_HOST=http://cd-service-n8n:5678
+      - GATEWAY_TOKEN=${CD_MOLT_TOKEN}
+    volumes:
+      - ./CD_VOL_MOLT:/root/.moltbot:z
+    depends_on:
+      - cd-service-ollama
+      - cd-service-n8n
+    networks:
+      - cd-net
+
+  tunnel-cyber-squire:
+    image: cloudflare/cloudflared:latest
+    container_name: tunnel-cyber-squire
+    network_mode: host
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CD_TUNNEL_TOKEN}
+
+networks:
+  cd-net:
+    driver: bridge
+
+volumes:
+  cd-vol-postgres:
+  cd-vol-n8n:
+  cd-vol-ollama:
+
+volumes:
+  cd-vol-postgres:
+  cd-vol-n8n:
+  cd-vol-ollama:
+
+
+

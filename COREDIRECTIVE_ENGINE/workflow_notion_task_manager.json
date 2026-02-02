@@ -1,0 +1,350 @@
+{
+  "name": "📋 Notion Task Manager & Deep Work Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "schedule-sync",
+      "name": "Sync Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 800]
+    },
+    {
+      "parameters": {
+        "operation": "getDatabasePages",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $json.notion_tasks_db }}",
+          "mode": "id"
+        },
+        "options": {
+          "filter": {
+            "singleCondition": {
+              "key": "Status",
+              "condition": "equals",
+              "returnType": "select",
+              "value": "In Progress"
+            }
+          }
+        }
+      },
+      "id": "get-active-tasks",
+      "name": "Get Active Tasks",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [460, 800],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b-instruct-q4_K_M",
+        "prompt": "=Analyze this task and provide productivity insights:\n\nTask: {{ $json.properties.Name.title[0].plain_text }}\nStatus: {{ $json.properties.Status.select.name }}\nPriority: {{ $json.properties.Priority.select.name }}\nDue Date: {{ $json.properties['Due Date'].date.start }}\n\nProvide:\n1. Estimated time to completion (realistic)\n2. Suggested subtasks (3-5 actionable items)\n3. Potential blockers\n4. Deep work recommendation (best time of day)\n\nReturn JSON:\n{\n  \"time_estimate\": \"...\",\n  \"subtasks\": [...],\n  \"blockers\": [...],\n  \"deep_work_window\": \"...\"\n}",
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "id": "qwen-task-analysis",
+      "name": "Qwen - Analyze Task",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [680, 800],
+      "credentials": {
+        "ollamaApi": {
+          "id": "ollama-local",
+          "name": "Ollama Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Get Active Tasks').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Time Estimate",
+              "textValue": "={{ $json.time_estimate }}"
+            },
+            {
+              "key": "Deep Work Window",
+              "textValue": "={{ $json.deep_work_window }}"
+            },
+            {
+              "key": "AI Analysis",
+              "richTextValue": "=Subtasks:\n{{ $json.subtasks.join('\\n') }}\n\nPotential Blockers:\n{{ $json.blockers.join('\\n') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-task-insights",
+      "name": "Update Task with Insights",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [900, 800],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getDatabasePages",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Schedule Trigger').item.json.notion_tasks_db }}",
+          "mode": "id"
+        },
+        "options": {
+          "filter": {
+            "conditions": {
+              "condition": [
+                {
+                  "key": "Status",
+                  "condition": "equals",
+                  "returnType": "select",
+                  "value": "Backlog"
+                },
+                {
+                  "key": "Priority",
+                  "condition": "equals",
+                  "returnType": "select",
+                  "value": "High"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "id": "get-high-priority-backlog",
+      "name": "Get High-Priority Backlog",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [460, 1000],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "has-backlog-tasks",
+      "name": "Has Backlog Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 1000]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-haiku-20241022",
+        "prompt": "=You are a productivity strategist for someone with ADHD managing high-velocity technical projects.\n\nBacklog Tasks:\n{{ $input.all().map(t => `- ${t.json.properties.Name.title[0].plain_text} (Priority: ${t.json.properties.Priority.select.name})`).join('\\n') }}\n\nProvide:\n1. Suggested task prioritization order\n2. Which tasks can be batched together\n3. Which tasks should be delegated/automated\n4. Recommended daily schedule (respecting energy levels)\n\nReturn JSON:\n{\n  \"priority_order\": [...],\n  \"batch_groups\": [...],\n  \"automate_candidates\": [...],\n  \"daily_schedule\": \"...\"\n}",
+        "options": {
+          "temperature": 0.5
+        }
+      },
+      "id": "claude-prioritize",
+      "name": "Claude - Prioritize Backlog",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.8,
+      "position": [900, 1000],
+      "credentials": {
+        "anthropicApi": {
+          "id": "anthropic-cred",
+          "name": "Claude AI (Anthropic)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Schedule Trigger').item.json.notion_strategy_page }}",
+          "mode": "id"
+        },
+        "title": "=📅 Daily Strategy: {{ $now.toFormat('yyyy-MM-dd') }}",
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "heading_2",
+              "richText": true,
+              "text": "Priority Order"
+            },
+            {
+              "type": "paragraph",
+              "richText": true,
+              "text": "={{ $json.priority_order.join('\\n') }}"
+            },
+            {
+              "type": "heading_2",
+              "richText": true,
+              "text": "Batch Groups"
+            },
+            {
+              "type": "paragraph",
+              "richText": true,
+              "text": "={{ $json.batch_groups.join('\\n') }}"
+            },
+            {
+              "type": "heading_2",
+              "richText": true,
+              "text": "Automation Candidates"
+            },
+            {
+              "type": "paragraph",
+              "richText": true,
+              "text": "={{ $json.automate_candidates.join('\\n') }}"
+            },
+            {
+              "type": "heading_2",
+              "richText": true,
+              "text": "Recommended Schedule"
+            },
+            {
+              "type": "paragraph",
+              "richText": true,
+              "text": "={{ $json.daily_schedule }}"
+            }
+          ]
+        }
+      },
+      "id": "save-daily-strategy",
+      "name": "Save Daily Strategy",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1120, 1000],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Sync Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Active Tasks",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get High-Priority Backlog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Tasks": {
+      "main": [
+        [
+          {
+            "node": "Qwen - Analyze Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qwen - Analyze Task": {
+      "main": [
+        [
+          {
+            "node": "Update Task with Insights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get High-Priority Backlog": {
+      "main": [
+        [
+          {
+            "node": "Has Backlog Tasks?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Backlog Tasks?": {
+      "main": [
+        [
+          {
+            "node": "Claude - Prioritize Backlog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude - Prioritize Backlog": {
+      "main": [
+        [
+          {
+            "node": "Save Daily Strategy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Notion",
+      "id": "cd-tag-010"
+    },
+    {
+      "name": "Productivity",
+      "id": "cd-tag-011"
+    }
+  ],
+  "meta": {
+    "notes": "ADHD-optimized task management: Analyzes active tasks with Qwen → Provides time estimates and deep work windows → Claude prioritizes high-priority backlog → Generates daily strategy with batching and automation suggestions."
+  }
+}
