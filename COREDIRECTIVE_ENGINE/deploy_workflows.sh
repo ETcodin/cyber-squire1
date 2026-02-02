@@ -4,8 +4,8 @@
 
 set -e  # Exit on error
 
-N8N_HOST="http://localhost:5678"
-N8N_API_KEY="35d4a05c-37c6-4d14-838e-9282687b4c43"
+N8N_HOST="${N8N_HOST:-http://localhost:5678}"
+N8N_API_KEY="${N8N_API_KEY:?ERROR: N8N_API_KEY environment variable required}"
 
 # Color codes for output
 GREEN='\033[0;32m'

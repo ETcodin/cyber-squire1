@@ -99,7 +99,7 @@
           "parameters": [
             {
               "name": "X-N8N-API-KEY",
-              "value": "35d4a05c-37c6-4d14-838e-9282687b4c43"
+              "value": "YOUR_N8N_API_KEY_HERE"
             }
           ]
         },
