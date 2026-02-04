@@ -1,0 +1,59 @@
+{
+  "name": "System: Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "error-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const err = $input.first().json;\nconst workflowName = err.workflow?.name || 'Unknown Workflow';\nconst errorMsg = err.execution?.error?.message || 'Unknown error';\nconst lastNode = err.execution?.lastNodeExecuted || 'Unknown node';\nconst executionId = err.execution?.id || 'N/A';\n\nconst msg = `⚠️ *OPERATION NUCLEAR FAILURE*\n\n*Workflow:* ${workflowName}\n*Error:* ${errorMsg}\n*Last Node:* ${lastNode}\n*Execution ID:* ${executionId}\n*Time:* ${new Date().toISOString()}`;\n\nreturn { json: { text: msg } };"
+      },
+      "name": "Format Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "id": "format-error"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id || '7868965034' }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      },
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "id": "send-alert"
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [[{ "node": "Format Error", "type": "main", "index": 0 }]]
+    },
+    "Format Error": {
+      "main": [[{ "node": "Send Alert", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": [{ "name": "System" }],
+  "meta": {
+    "notes": "Global error handler. Set as default error workflow in n8n Settings > Workflow Default Settings."
+  }
+}
