@@ -14,7 +14,7 @@ Update the error handler workflow to use n8n's credential system instead of hard
 - Replaced HTTP Request node with n8n Telegram node
 - Removed hardcoded bot token URL: `https://api.telegram.org/bot8232702492:AAEFQXuDF1M6Oz03K5CbYTy8cHH1lw7PTUc/sendMessage`
 - Added credential reference: `telegramApi` with ID `telegram-bot-main`
-- Set default chat_id to `7868965034` with fallback support
+- Implemented n8n variable reference: `$vars.TELEGRAM_CHAT_ID` with fallback to `7868965034`
 - Maintained error formatting with workflow name, error message, last node, execution ID, and timestamp
 
 **Verification Results**:
@@ -29,7 +29,9 @@ $ grep "telegramApi" COREDIRECTIVE_ENGINE/workflow_error_handler.json
 # (found - PASS)
 ```
 
-**Commit**: `b45d166` - "Update error handler to use n8n credential system"
+**Commits**:
+- `b45d166` - "Update error handler to use n8n credential system"
+- `dff831a` - "Use n8n variable for Telegram chat ID with fallback"
 
 ### 2. Document Deployment Procedure ✅
 **File**: `/Users/et/cyber-squire-ops/.planning/phases/01-infrastructure-foundation/01-02-DEPLOYMENT-STEPS.md`
@@ -42,7 +44,9 @@ $ grep "telegramApi" COREDIRECTIVE_ENGINE/workflow_error_handler.json
 - Verification checklist
 - Troubleshooting guide
 
-**Commit**: `30395b3` - "Add error handler deployment documentation"
+**Commits**:
+- `30395b3` - "Add error handler deployment documentation"
+- `15b5363` - "Update deployment steps to include n8n variable creation"
 
 ### 3. Infrastructure Assessment ✅
 **Findings**:
@@ -92,17 +96,22 @@ Error Trigger → Format Error → Telegram Node (credential ref)
 To complete this phase, execute the following via n8n UI:
 
 1. **Access n8n**: https://cyber-squire.tigouetheory.com
-2. **Create Credential**:
+2. **Create Variable**:
+   - Settings → Variables → Add Variable
+   - Key: TELEGRAM_CHAT_ID
+   - Value: 7868965034
+   - Save
+3. **Create Credential**:
    - Settings → Credentials → Add Credential → Telegram API
    - Name: "Telegram Bot"
    - Access Token: [from credentials_vault.json]
    - Save
-3. **Import Workflow**:
+4. **Import Workflow**:
    - Workflows → Import from File → `/tmp/workflow_error_handler.json`
-4. **Activate**:
+5. **Activate**:
    - Open workflow → Toggle "Active" ON
    - Settings → Workflow Settings → Error Workflow: "System: Error Handler"
-5. **Test**:
+6. **Test**:
    - Create test workflow with intentional error
    - Verify Telegram notification received at chat_id 7868965034
 
