@@ -1,0 +1,203 @@
+{
+  "name": "ADHD Commander - Focus Selector",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "execute-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getDatabasePages",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $env.NOTION_TASKS_DB_ID }}",
+          "mode": "id"
+        },
+        "returnAll": false,
+        "limit": 20,
+        "options": {
+          "filter": {
+            "conditions": {
+              "condition": [
+                {
+                  "key": "Status",
+                  "condition": "doesNotEqual",
+                  "returnType": "select",
+                  "value": "Done"
+                }
+              ]
+            }
+          },
+          "sorts": [
+            {
+              "key": "Priority",
+              "direction": "ascending"
+            },
+            {
+              "key": "Due Date",
+              "direction": "ascending"
+            }
+          ]
+        }
+      },
+      "id": "notion-query",
+      "name": "Get Incomplete Tasks",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [320, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract task data from Notion results\nconst tasks = $input.all();\nconst ctx = $('Execute Workflow Trigger').first().json;\n\nif (!tasks || tasks.length === 0) {\n  return {\n    json: {\n      chatId: ctx.chatId,\n      user: ctx.user,\n      hasTasks: false,\n      taskList: 'No incomplete tasks found in Notion.',\n      taskCount: 0\n    }\n  };\n}\n\n// Build task list for Ollama\nconst taskList = tasks.map((t, i) => {\n  const props = t.json.properties || {};\n  const name = props.Name?.title?.[0]?.plain_text || 'Untitled';\n  const priority = props.Priority?.select?.name || 'Medium';\n  const status = props.Status?.select?.name || 'Backlog';\n  const dueDate = props['Due Date']?.date?.start || 'No due date';\n  \n  return `${i + 1}. ${name} | Priority: ${priority} | Status: ${status} | Due: ${dueDate}`;\n}).join('\\n');\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    user: ctx.user,\n    hasTasks: true,\n    taskList: taskList,\n    taskCount: tasks.length,\n    rawTasks: tasks.map(t => ({\n      id: t.json.id,\n      name: t.json.properties?.Name?.title?.[0]?.plain_text || 'Untitled',\n      priority: t.json.properties?.Priority?.select?.name || 'Medium'\n    }))\n  }\n};"
+      },
+      "id": "parse-tasks",
+      "name": "Parse Notion Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [540, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.hasTasks }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "has-tasks-check",
+      "name": "Has Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"You are an ADHD productivity commander. Your job is to cut through analysis paralysis.\\n\\nCurrent time: {{ $now.format('HH:mm') }}, Day: {{ $now.format('EEEE') }}.\\n\\nHere are the user's incomplete tasks from Notion:\\n{{ $json.taskList }}\\n\\nRules:\\n1. Pick exactly ONE task - the highest ROI action right now\\n2. Consider urgency (due dates), priority, and mental energy available at this time of day\\n3. Morning (6am-12pm) = high cognitive tasks, Afternoon (12pm-5pm) = meetings/collaboration, Evening (5pm-9pm) = lighter tasks\\n\\nRespond ONLY with JSON (no markdown, no explanation):\\n{\\n  \\\"selected_task\\\": \\\"<exact task name>\\\",\\n  \\\"reasoning\\\": \\\"<1 sentence why this task NOW>\\\",\\n  \\\"duration_minutes\\\": <realistic time estimate>,\\n  \\\"motivation\\\": \\\"<1 commander-style motivational line>\\\"\\n}\",\n  \"stream\": false,\n  \"options\": { \"temperature\": 0.3, \"num_predict\": 256 }\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "ollama-selector",
+      "name": "Ollama Task Selector",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ollama = $input.first().json;\nconst ctx = $('Parse Notion Tasks').first().json;\n\nlet response;\ntry {\n  const cleaned = (ollama.response || '{}').replace(/```json\\n?|```\\n?/g, '').trim();\n  response = JSON.parse(cleaned);\n} catch (e) {\n  response = {\n    selected_task: 'Parse Error',\n    reasoning: 'Could not parse Ollama response',\n    duration_minutes: 45,\n    motivation: 'Just pick one and start.'\n  };\n}\n\n// Progress bar (placeholder - can be enhanced with DB tracking)\nconst sessions = 1;\nconst bar = ''.repeat(1) + ''.repeat(9);\n\nconst msg = `*ADHD COMMANDER*\\n\\n*MISSION DEPLOYED*\\n*${response.selected_task}*\\n\\n Duration: ${response.duration_minutes} min\\n Tasks Available: ${ctx.taskCount}\\n\\n *AI Reasoning*\\n_${response.reasoning}_\\n\\n*LEAD MEASURE*\\n${bar} Session ${sessions}\\n\\n_${response.motivation}_\\n\\n@${ctx.user}`;\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    text: msg,\n    selectedTask: response.selected_task,\n    duration: response.duration_minutes\n  }\n};"
+      },
+      "id": "format-mission",
+      "name": "Format Mission",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Notion Tasks').first().json;\n\nconst msg = `*ADHD COMMANDER*\\n\\n No tasks found in your Notion database.\\n\\nAdd some tasks to get started, or check that your database ID is correct.\\n\\n_Tip: Use Status != \"Done\" to track incomplete work._`;\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    text: msg\n  }\n};"
+      },
+      "id": "format-no-tasks",
+      "name": "Format No Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-telegram",
+      "name": "Send Mission",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1420, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO commander_log (event_type, task_name, duration_minutes, created_at) VALUES ('focus_dispatch', $1, $2, NOW());",
+        "options": {
+          "queryParams": "={{ [$json.selectedTask || 'unknown', $json.duration || 45] }}"
+        }
+      },
+      "id": "log-postgres",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1420, 500],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Get Incomplete Tasks", "type": "main", "index": 0 }]]
+    },
+    "Get Incomplete Tasks": {
+      "main": [[{ "node": "Parse Notion Tasks", "type": "main", "index": 0 }]]
+    },
+    "Parse Notion Tasks": {
+      "main": [[{ "node": "Has Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks?": {
+      "main": [
+        [{ "node": "Ollama Task Selector", "type": "main", "index": 0 }],
+        [{ "node": "Format No Tasks", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ollama Task Selector": {
+      "main": [[{ "node": "Format Mission", "type": "main", "index": 0 }]]
+    },
+    "Format Mission": {
+      "main": [
+        [{ "node": "Send Mission", "type": "main", "index": 0 }],
+        [{ "node": "Log to PostgreSQL", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format No Tasks": {
+      "main": [[{ "node": "Send Mission", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "ADHD" },
+    { "name": "Commander" },
+    { "name": "SubWorkflow" }
+  ],
+  "meta": {
+    "notes": "ADHD Commander Sub-Workflow: Called by Master Router via Execute Workflow. Queries Notion for incomplete tasks, uses Ollama to select highest-ROI task, sends mission via Telegram. Requires NOTION_TASKS_DB_ID environment variable.",
+    "templateCredsSetupCompleted": true
+  }
+}

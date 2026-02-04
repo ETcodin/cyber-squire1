@@ -1,0 +1,193 @@
+{
+  "name": "Telegram Master Router",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "tg-trigger",
+      "name": "Telegram Ingestion",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "master-router-v2",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safely extract data from Telegram update\nconst raw = $input.first().json;\n\n// Handle both message and callback_query\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\n// Extract chat ID (works for both message and callback)\nconst chatId = message.chat?.id || callbackMsg.chat?.id || null;\n\n// Extract text (message text or callback data)\nconst text = (message.text || callback.data || '').trim().toLowerCase();\n\n// Extract username\nconst user = message.from?.username || callback.from?.username || 'User';\n\n// Determine route\nlet route = 'unknown';\nif (text.startsWith('/focus')) route = 'focus';\nelse if (text.startsWith('/status')) route = 'status';\nelse if (text.startsWith('/help')) route = 'help';\n\n// Validate we have a chat ID\nif (!chatId) {\n  throw new Error('Could not extract chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    chatId,\n    text,\n    user,\n    route,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "focus",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "focus",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "status",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "help",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "help",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "router",
+      "name": "Command Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"Select ONE task for deep work. Example tasks: Lab Report (High, Tomorrow), Security Review (Med, 3 days). Respond JSON only: {\\\"task\\\": \\\"name\\\", \\\"reason\\\": \\\"why\\\", \\\"minutes\\\": 45}\",\n  \"stream\": false,\n  \"options\": { \"temperature\": 0.3, \"num_predict\": 150 }\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "ollama-focus",
+      "name": "Ollama Focus",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst ctx = $('Parse Input').first().json;\n\nlet task = { task: 'Deep Work', reason: 'Focus session', minutes: 45 };\ntry {\n  const cleaned = (r.response || '{}').replace(/```json\\n?|```\\n?/g, '').trim();\n  task = JSON.parse(cleaned);\n} catch (e) {\n  // Use default task if parsing fails\n}\n\nconst bar = '█░░░░░░░░░';\n\nconst msg = `🎯 *12WY COMMANDER*\n━━━━━━━━━━━━━━━━━━━━\n\n*FOCUS TARGET*\n*${task.task}*\n\n⏱ Duration: ${task.minutes || 45} min\n\n🧠 *AI Reasoning*\n_${task.reason || 'Selected for you.'}_\n\n━━━━━━━━━━━━━━━━━━━━\n📈 *LEAD MEASURE*\n${bar} Session 1\n━━━━━━━━━━━━━━━━━━━━\n\n@${ctx.user}`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-focus",
+      "name": "Format Focus",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\n\nconst msg = `📊 *SYSTEM STATUS*\n━━━━━━━━━━━━━━━━━━━━\n\n✅ Master Router: Online\n✅ Ollama: Connected\n✅ Webhook: Active\n\n*Version:* v2.0\n*Time:* ${ctx.timestamp}`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-status",
+      "name": "Format Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\n\nconst msg = `📖 *12WY COMMANDER HELP*\n━━━━━━━━━━━━━━━━━━━━\n\n*Commands:*\n/focus - Get AI-selected focus task\n/status - System health check\n/help - This message\n\n*Coming Soon:*\n/done - Mark task complete\n/skip - Skip current task\n/warroom - Financial dashboard`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-help",
+      "name": "Format Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\n\nconst msg = `🤷 Unknown command: ${ctx.text.substring(0, 20)}\n\nSend /help for available commands.`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-unknown",
+      "name": "Format Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 800]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1360, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Ingestion": {
+      "main": [[{ "node": "Parse Input", "type": "main", "index": 0 }]]
+    },
+    "Parse Input": {
+      "main": [[{ "node": "Command Router", "type": "main", "index": 0 }]]
+    },
+    "Command Router": {
+      "main": [
+        [{ "node": "Ollama Focus", "type": "main", "index": 0 }],
+        [{ "node": "Format Status", "type": "main", "index": 0 }],
+        [{ "node": "Format Help", "type": "main", "index": 0 }],
+        [{ "node": "Format Unknown", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ollama Focus": {
+      "main": [[{ "node": "Format Focus", "type": "main", "index": 0 }]]
+    },
+    "Format Focus": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Format Status": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Format Help": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Format Unknown": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [{ "name": "12WY" }, { "name": "MasterRouter" }]
+}

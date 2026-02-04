@@ -1,0 +1,89 @@
+{
+  "name": "Tool: Create Task",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonInput",
+        "jsonInput": {
+          "title": "={{ $json.query }}",
+          "priority": "medium",
+          "dueDate": ""
+        }
+      },
+      "id": "tool-input",
+      "name": "Tool Input",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflowInput",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nlet parsed = {};\n\n// Try to parse as JSON first\ntry {\n  if (typeof input.query === 'string' && input.query.startsWith('{')) {\n    parsed = JSON.parse(input.query);\n  } else {\n    parsed = { title: input.query || input.title };\n  }\n} catch (e) {\n  parsed = { title: input.query || input.title };\n}\n\nconst priorityEmoji = {\n  high: '🔴',\n  medium: '🟡',\n  low: '🟢'\n};\n\nreturn {\n  json: {\n    title: parsed.title || 'Untitled Task',\n    priority: parsed.priority || 'medium',\n    dueDate: parsed.dueDate || null,\n    emoji: priorityEmoji[parsed.priority] || '🟡'\n  }\n};"
+      },
+      "id": "parse-task",
+      "name": "Parse Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.NOTION_TASKS_DB_ID }}"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{ $json.title }}"
+            },
+            {
+              "key": "Priority|select",
+              "selectValue": "={{ $json.priority }}"
+            },
+            {
+              "key": "Status|select",
+              "selectValue": "Not started"
+            }
+          ]
+        }
+      },
+      "id": "create-notion",
+      "name": "Create in Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [680, 300],
+      "credentials": {
+        "notionApi": { "id": "notion-creds", "name": "Notion" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const task = $('Parse Task').first().json;\nconst notion = $input.first().json;\n\nreturn {\n  json: {\n    response: `✅ **Task Created**\\n\\n${task.emoji} **${task.title}**\\nPriority: ${task.priority}\\n${task.dueDate ? 'Due: ' + task.dueDate : ''}\\n\\n[Open in Notion](${notion.url || '#'})`\n  }\n};"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {},
+      "id": "tool-output",
+      "name": "Tool Output",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflowOutput",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Tool Input": { "main": [[{ "node": "Parse Task", "type": "main", "index": 0 }]] },
+    "Parse Task": { "main": [[{ "node": "Create in Notion", "type": "main", "index": 0 }]] },
+    "Create in Notion": { "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]] },
+    "Format Response": { "main": [[{ "node": "Tool Output", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

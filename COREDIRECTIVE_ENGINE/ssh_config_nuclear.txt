@@ -1,0 +1,22 @@
+# ~/.ssh/config block for Nuclear Engine
+# Add this to your ~/.ssh/config file
+
+Host nuclear-engine
+    HostName 54.234.155.244
+    User ec2-user
+    IdentityFile /Users/et/cyber-squire-ops/cyber-squire-ops.pem
+    IdentitiesOnly yes
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    ForwardAgent no
+
+    # Port forwarding for local n8n access (optional)
+    # LocalForward 5678 localhost:5678
+    # LocalForward 11434 localhost:11434
+
+# Usage:
+#   ssh nuclear-engine
+#   ssh nuclear-engine 'docker ps'
+#   ssh nuclear-engine 'docker logs cd-service-n8n --tail 100'
+#   scp file.json nuclear-engine:/home/ec2-user/COREDIRECTIVE_ENGINE/

@@ -1,0 +1,283 @@
+{
+  "name": "Cyber-Squire Telegram Commander",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.message.voice }}",
+              "rightValue": "",
+              "operator": { "type": "object", "operation": "exists" }
+            }
+          ]
+        }
+      },
+      "id": "is-voice",
+      "name": "Is Voice?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "fileId": "={{ $json.message.voice.file_id }}",
+        "resource": "file"
+      },
+      "id": "get-voice",
+      "name": "Get Voice File",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [680, 180],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-main", "name": "Telegram Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe"
+      },
+      "id": "transcribe",
+      "name": "Whisper STT",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [900, 180],
+      "credentials": {
+        "openAiApi": { "id": "openai-creds", "name": "OpenAI" }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "userMessage",
+              "value": "={{ $('Telegram Trigger').item.json.message.text || $json.text }}",
+              "type": "string"
+            },
+            {
+              "name": "chatId",
+              "value": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+              "type": "number"
+            },
+            {
+              "name": "userId",
+              "value": "={{ $('Telegram Trigger').item.json.message.from.id }}",
+              "type": "number"
+            },
+            {
+              "name": "username",
+              "value": "={{ $('Telegram Trigger').item.json.message.from.username || 'unknown' }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "normalize-input",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "options": {
+          "systemMessage": "You are Cyber-Squire, a powerful AI command center running on private AWS infrastructure.\n\nToday is {{ $today.format('yyyy-MM-dd') }}.\n\nYou have access to these tools:\n1. **System Status** - Check infrastructure health\n2. **Security Scan** - Run Nmap/Nuclei scans on targets\n3. **Task Manager** - Create/list tasks in Notion\n4. **Email Summary** - Get unread email summaries\n5. **Calendar** - Check upcoming events\n6. **Execute Workflow** - Trigger any n8n workflow by name\n7. **Web Search** - Search the internet for information\n\nWhen the user gives a command:\n1. Identify which tool(s) to use\n2. Execute them in sequence\n3. Provide a concise, actionable summary\n\nFor security scans, ALWAYS confirm the target before proceeding.\nFor task creation, extract: title, priority (high/medium/low), due date if mentioned.\n\nBe direct, military-efficient. No fluff. Status reports use emoji indicators:\n🟢 = OK | 🟡 = Warning | 🔴 = Critical | ⏳ = In Progress"
+        }
+      },
+      "id": "ai-commander",
+      "name": "AI Commander",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "llm-brain",
+      "name": "Claude/OpenRouter",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [1340, 520],
+      "credentials": {
+        "openRouterApi": { "id": "openrouter-creds", "name": "OpenRouter" }
+      }
+    },
+    {
+      "parameters": {
+        "sessionKey": "={{ $('Normalize Input').item.json.userId }}",
+        "sessionIdType": "customKey",
+        "contextWindowLength": 20
+      },
+      "id": "memory",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [1500, 520]
+    },
+    {
+      "parameters": {
+        "name": "system_status",
+        "description": "Check system health - Docker containers, disk space, memory usage"
+      },
+      "id": "tool-status",
+      "name": "Tool: System Status",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1660, 400]
+    },
+    {
+      "parameters": {
+        "name": "security_scan",
+        "description": "Run security scan on a target. Input: target domain or IP. Uses Nmap and Nuclei."
+      },
+      "id": "tool-scan",
+      "name": "Tool: Security Scan",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1660, 520]
+    },
+    {
+      "parameters": {
+        "name": "create_task",
+        "description": "Create a task/todo. Input: JSON with title, priority (high/medium/low), dueDate (optional)"
+      },
+      "id": "tool-task",
+      "name": "Tool: Create Task",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1660, 640]
+    },
+    {
+      "parameters": {
+        "name": "trigger_workflow",
+        "description": "Trigger another n8n workflow by name. Input: workflow name"
+      },
+      "id": "tool-workflow",
+      "name": "Tool: Trigger Workflow",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1820, 400]
+    },
+    {
+      "parameters": {
+        "name": "web_search",
+        "description": "Search the web for current information. Input: search query"
+      },
+      "id": "tool-search",
+      "name": "Tool: Web Search",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1820, 520]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Normalize Input').item.json.chatId }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "appendAttribution": false
+        }
+      },
+      "id": "send-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1560, 300],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-main", "name": "Telegram Bot" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Normalize Input').item.json.chatId }}",
+        "text": "⏳ Processing your request...",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "typing-indicator",
+      "name": "Typing Indicator",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1340, 180],
+      "credentials": {
+        "telegramApi": { "id": "telegram-bot-main", "name": "Telegram Bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [[{ "node": "Is Voice?", "type": "main", "index": 0 }]]
+    },
+    "Is Voice?": {
+      "main": [
+        [{ "node": "Get Voice File", "type": "main", "index": 0 }],
+        [{ "node": "Normalize Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get Voice File": {
+      "main": [[{ "node": "Whisper STT", "type": "main", "index": 0 }]]
+    },
+    "Whisper STT": {
+      "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]]
+    },
+    "Normalize Input": {
+      "main": [
+        [{ "node": "Typing Indicator", "type": "main", "index": 0 }]
+      ]
+    },
+    "Typing Indicator": {
+      "main": [[{ "node": "AI Commander", "type": "main", "index": 0 }]]
+    },
+    "Claude/OpenRouter": {
+      "ai_languageModel": [[{ "node": "AI Commander", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Conversation Memory": {
+      "ai_memory": [[{ "node": "AI Commander", "type": "ai_memory", "index": 0 }]]
+    },
+    "Tool: System Status": {
+      "ai_tool": [[{ "node": "AI Commander", "type": "ai_tool", "index": 0 }]]
+    },
+    "Tool: Security Scan": {
+      "ai_tool": [[{ "node": "AI Commander", "type": "ai_tool", "index": 0 }]]
+    },
+    "Tool: Create Task": {
+      "ai_tool": [[{ "node": "AI Commander", "type": "ai_tool", "index": 0 }]]
+    },
+    "Tool: Trigger Workflow": {
+      "ai_tool": [[{ "node": "AI Commander", "type": "ai_tool", "index": 0 }]]
+    },
+    "Tool: Web Search": {
+      "ai_tool": [[{ "node": "AI Commander", "type": "ai_tool", "index": 0 }]]
+    },
+    "AI Commander": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

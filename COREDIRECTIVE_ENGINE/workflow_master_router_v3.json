@@ -1,0 +1,212 @@
+{
+  "name": "Telegram Master Router v3",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "tg-trigger",
+      "name": "Telegram Ingestion",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "master-router-v3",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safely extract data from Telegram update\nconst raw = $input.first().json;\n\n// Handle both message and callback_query\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\n// Extract chat ID (works for both message and callback)\nconst chatId = message.chat?.id || callbackMsg.chat?.id || null;\n\n// Extract text (message text or callback data)\nconst text = (message.text || callback.data || '').trim().toLowerCase();\n\n// Extract username\nconst user = message.from?.username || callback.from?.username || 'User';\n\n// Determine route based on command\nlet route = 'unknown';\nif (text.startsWith('/focus')) route = 'focus';\nelse if (text.startsWith('/status')) route = 'status';\nelse if (text.startsWith('/help')) route = 'help';\nelse if (text.startsWith('/warroom')) route = 'warroom';\nelse if (text.startsWith('/done')) route = 'done';\n\n// Validate we have a chat ID\nif (!chatId) {\n  throw new Error('Could not extract chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    chatId,\n    text,\n    user,\n    route,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "focus",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "focus",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "status",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "help",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "help",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "warroom",
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "warroom",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "router",
+      "name": "Command Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "YXaKoP24iJ8IDDMY",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "exec-adhd-commander",
+      "name": "Execute ADHD Commander",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [920, 200],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\n\nconst msg = `*SYSTEM STATUS*\\n\\n Master Router: Online\\n Ollama: Connected\\n ADHD Commander: Ready\\n Notion: Linked\\n PostgreSQL: Active\\n\\n*Version:* v3.0 (Modular)\\n*Time:* ${ctx.timestamp}\\n\\n*Available Commands:*\\n/focus - AI-selected focus task\\n/status - This status check\\n/help - Command reference\\n/warroom - Financial dashboard`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-status",
+      "name": "Format Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\n\nconst msg = `*COMMANDER HELP*\\n\\n*Active Commands:*\\n/focus - Get AI-selected focus task from Notion\\n/status - System health check\\n/help - This message\\n\\n*Coming Soon:*\\n/done - Mark current task complete\\n/skip - Skip and get new task\\n/warroom - Financial solvency dashboard\\n/pomodoro - Start timed focus session\\n\\n*How It Works:*\\n1. /focus queries your Notion tasks DB\\n2. Ollama AI picks highest-ROI task\\n3. You execute. No excuses.\\n\\n_Built for ADHD brains._`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-help",
+      "name": "Format Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\n\nconst msg = ` *WAR ROOM*\\n\\n_Financial dashboard coming soon..._\\n\\nThis will show:\\n Gumroad revenue\\n Runway calculation\\n Solvency status\\n Burn rate alerts`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-warroom",
+      "name": "Format Warroom",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 800]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\n\nconst msg = ` Unknown command: ${ctx.text.substring(0, 20)}\\n\\nSend /help for available commands.`;\n\nreturn { json: { chatId: ctx.chatId, text: msg } };"
+      },
+      "id": "format-unknown",
+      "name": "Format Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 1000]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1360, 600],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Ingestion": {
+      "main": [[{ "node": "Parse Input", "type": "main", "index": 0 }]]
+    },
+    "Parse Input": {
+      "main": [[{ "node": "Command Router", "type": "main", "index": 0 }]]
+    },
+    "Command Router": {
+      "main": [
+        [{ "node": "Execute ADHD Commander", "type": "main", "index": 0 }],
+        [{ "node": "Format Status", "type": "main", "index": 0 }],
+        [{ "node": "Format Help", "type": "main", "index": 0 }],
+        [{ "node": "Format Warroom", "type": "main", "index": 0 }],
+        [{ "node": "Format Unknown", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Status": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Format Help": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Format Warroom": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Format Unknown": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "12WY" },
+    { "name": "MasterRouter" },
+    { "name": "v3" }
+  ],
+  "meta": {
+    "notes": "Master Router v3 - Modular architecture. Routes /focus to ADHD Commander sub-workflow. Requires ADHD_COMMANDER_WORKFLOW_ID environment variable set to the sub-workflow's ID.",
+    "templateCredsSetupCompleted": true
+  }
+}

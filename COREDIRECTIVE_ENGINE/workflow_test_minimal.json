@@ -1,0 +1,45 @@
+{
+  "name": "Test Telegram Minimal",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "tg-in",
+      "name": "Telegram In",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "test-minimal-v1",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-op-nuclear",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "Echo: {{ $json.message.text }}",
+        "additionalFields": {}
+      },
+      "id": "tg-out",
+      "name": "Send",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [460, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-op-nuclear",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram In": { "main": [[{ "node": "Send", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

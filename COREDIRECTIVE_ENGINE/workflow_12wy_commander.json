@@ -1,0 +1,259 @@
+{
+  "name": "12WY Commander - Deep Work Focus Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 9,19,23 * * *" },
+            { "field": "cronExpression", "expression": "30 12 * * *" }
+          ]
+        }
+      },
+      "id": "cron-commander",
+      "name": "Commander Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-manual-trigger",
+      "name": "Telegram Manual Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 500],
+      "webhookId": "12wy-commander-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "id": "focus-cmd",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/focus",
+              "operator": { "type": "string", "operation": "startsWith" }
+            }
+          ]
+        }
+      },
+      "id": "filter-focus-cmd",
+      "name": "Filter /focus Command",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [460, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge scheduled and manual triggers\nconst isManual = $input.first().json.message?.chat?.id !== undefined;\n\nreturn {\n  json: {\n    trigger_type: isManual ? 'manual' : 'scheduled',\n    chat_id: isManual ? $input.first().json.message.chat.id : process.env.TELEGRAM_COMMANDER_CHAT_ID,\n    requested_by: isManual ? ($input.first().json.message.from.username || 'User') : 'System',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "merge-trigger",
+      "name": "Merge Trigger Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $env.NOTION_ASSIGNMENTS_DB_ID }}",
+          "mode": "id"
+        },
+        "returnAll": false,
+        "limit": 50,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Status|select",
+              "condition": "equals",
+              "value": "Not Started"
+            },
+            {
+              "key": "Status|select",
+              "condition": "equals",
+              "value": "In Progress"
+            }
+          ],
+          "combinator": "or"
+        },
+        "sortValue": {
+          "sort": [
+            { "key": "Due Date", "direction": "ascending" },
+            { "key": "Priority", "direction": "descending" }
+          ]
+        }
+      },
+      "id": "get-assignments",
+      "name": "Get Notion Assignments",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [900, 400],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-cred",
+          "name": "Notion Cyber-Squire API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare tasks for Ollama analysis\nconst tasks = $input.all();\nconst triggerContext = $('Merge Trigger Context').first().json;\n\nif (tasks.length === 0) {\n  return {\n    json: {\n      error: 'no_tasks',\n      message: 'No active assignments found in Notion.',\n      ...triggerContext\n    }\n  };\n}\n\nconst taskSummaries = tasks.map((t, idx) => {\n  const props = t.json.properties;\n  return {\n    index: idx + 1,\n    id: t.json.id,\n    url: t.json.url,\n    name: props.Name?.title?.[0]?.plain_text || 'Untitled',\n    status: props.Status?.select?.name || 'Unknown',\n    priority: props.Priority?.select?.name || 'Medium',\n    due_date: props['Due Date']?.date?.start || 'No due date',\n    course: props.Course?.select?.name || 'General',\n    estimated_time: props['Time Estimate']?.rich_text?.[0]?.plain_text || 'Unknown',\n    tags: props.Tags?.multi_select?.map(t => t.name).join(', ') || 'None'\n  };\n});\n\nreturn {\n  json: {\n    tasks: taskSummaries,\n    task_count: taskSummaries.length,\n    ...triggerContext\n  }\n};"
+      },
+      "id": "prepare-tasks",
+      "name": "Prepare Task Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"You are a 12-Week Year productivity coach. Your job is to select EXACTLY ONE task for deep work focus.\\n\\nCurrent Time: {{ $now.format('HH:mm') }}\\nDay of Week: {{ $now.format('EEEE') }}\\n\\nAvailable Tasks:\\n{{ JSON.stringify($json.tasks, null, 2) }}\\n\\nRules:\\n1. Select the task with the highest urgency (due soonest + highest priority)\\n2. If it's morning (before 12:00), prioritize cognitively demanding tasks\\n3. If it's afternoon/evening, prioritize tasks that can be completed in one session\\n4. Consider ADHD optimization: pick tasks with clear outcomes\\n5. Never pick a task already completed\\n\\nRespond ONLY with valid JSON (no markdown, no explanation):\\n{\\n  \\\"selected_index\\\": <number>,\\n  \\\"task_name\\\": \\\"<name>\\\",\\n  \\\"reasoning\\\": \\\"<1-2 sentences>\\\",\\n  \\\"suggested_duration_minutes\\\": <number>,\\n  \\\"energy_match\\\": \\\"high|medium|low\\\",\\n  \\\"pomodoro_count\\\": <number>\\n}\",\n  \"stream\": false,\n  \"options\": {\n    \"temperature\": 0.3,\n    \"num_predict\": 512\n  }\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "ollama-select-task",
+      "name": "Ollama Select Focus Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Ollama response and calculate Lead Measure\nconst ollamaRaw = $input.first().json.response || '{}';\nconst taskContext = $('Prepare Task Context').first().json;\nconst triggerContext = $('Merge Trigger Context').first().json;\n\nlet selected;\ntry {\n  // Clean potential markdown wrapping\n  const cleaned = ollamaRaw.replace(/```json\\n?|```\\n?/g, '').trim();\n  selected = JSON.parse(cleaned);\n} catch (e) {\n  return {\n    json: {\n      error: 'parse_failed',\n      raw_response: ollamaRaw,\n      ...triggerContext\n    }\n  };\n}\n\n// Find the selected task\nconst selectedTask = taskContext.tasks.find(t => t.index === selected.selected_index);\n\nif (!selectedTask) {\n  return {\n    json: {\n      error: 'task_not_found',\n      selected_index: selected.selected_index,\n      ...triggerContext\n    }\n  };\n}\n\n// Calculate 12WY Lead Measure (weekly execution score)\n// Retrieve from workflow static data or initialize\nconst weekStart = $now.startOf('week');\nconst staticKey = `lead_measure_${weekStart.toFormat('yyyy-MM-dd')}`;\nconst currentCount = $workflow.staticData[staticKey] || 0;\nconst newCount = currentCount + 1;\n$workflow.staticData[staticKey] = newCount;\n\n// Weekly target: 28 focus sessions (4 per day * 7 days)\nconst weeklyTarget = 28;\nconst progressPercent = Math.min(100, Math.round((newCount / weeklyTarget) * 100));\n\nreturn {\n  json: {\n    selected_task: selectedTask,\n    ai_analysis: selected,\n    lead_measure: {\n      sessions_this_week: newCount,\n      weekly_target: weeklyTarget,\n      progress_percent: progressPercent,\n      sessions_remaining: Math.max(0, weeklyTarget - newCount)\n    },\n    ...triggerContext\n  }\n};"
+      },
+      "id": "process-selection",
+      "name": "Process Selection & Lead Measure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Telegram message\nconst data = $input.first().json;\n\nif (data.error) {\n  return {\n    json: {\n      chat_id: data.chat_id,\n      text: `\\u26a0\\ufe0f *Commander Error*\\n\\n${data.error}: ${data.message || data.raw_response?.substring(0, 200) || 'Unknown'}`,\n      parse_mode: 'Markdown'\n    }\n  };\n}\n\nconst task = data.selected_task;\nconst ai = data.ai_analysis;\nconst lead = data.lead_measure;\n\n// Progress bar visualization\nconst filled = Math.round(lead.progress_percent / 10);\nconst progressBar = '\\u2588'.repeat(filled) + '\\u2591'.repeat(10 - filled);\n\n// Time-of-day emoji\nconst hour = new Date().getHours();\nlet timeEmoji = '\\ud83c\\udf05'; // sunrise\nif (hour >= 12 && hour < 17) timeEmoji = '\\u2600\\ufe0f'; // sun\nelse if (hour >= 17 && hour < 21) timeEmoji = '\\ud83c\\udf07'; // sunset\nelse if (hour >= 21 || hour < 6) timeEmoji = '\\ud83c\\udf19'; // moon\n\nconst message = `\n${timeEmoji} *12WY COMMANDER*\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n\n\\ud83c\\udfaf *FOCUS TARGET*\n*${task.name}*\n\n\\ud83d\\udcca *Task Intel*\n\\u2022 Priority: ${task.priority}\n\\u2022 Due: ${task.due_date}\n\\u2022 Course: ${task.course}\n\\u2022 Energy Match: ${ai.energy_match?.toUpperCase() || 'MEDIUM'}\n\n\\u23f1 *Deep Work Protocol*\n\\u2022 Duration: ${ai.suggested_duration_minutes || 45} minutes\n\\u2022 Pomodoros: ${ai.pomodoro_count || 2}\n\n\\ud83e\\udde0 *AI Reasoning*\n_${ai.reasoning || 'Selected based on urgency and priority.'}_\n\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n\\ud83d\\udcca *LEAD MEASURE*\n${progressBar} ${lead.progress_percent}%\n\n*Session ${lead.sessions_this_week} of ${lead.weekly_target}*\n${lead.sessions_remaining > 0 ? `${lead.sessions_remaining} sessions to weekly target` : '\\ud83c\\udf89 WEEKLY TARGET HIT!'}\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n\n[\\ud83d\\udd17 Open in Notion](${task.url})\n\nReply: /done | /skip | /defer\n`;\n\nreturn {\n  json: {\n    chat_id: data.chat_id,\n    text: message,\n    parse_mode: 'Markdown',\n    task_id: task.id,\n    task_name: task.name\n  }\n};"
+      },
+      "id": "format-telegram",
+      "name": "Format Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "send-telegram",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2000, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO nuclear_log (event_type, payload, created_at) VALUES ('commander_dispatch', $1::jsonb, NOW()) RETURNING id;",
+        "options": {
+          "queryParams": "={{ JSON.stringify({ task_id: $('Format Telegram Message').first().json.task_id, task_name: $('Format Telegram Message').first().json.task_name, trigger: $('Merge Trigger Context').first().json.trigger_type, lead_measure: $('Process Selection & Lead Measure').first().json.lead_measure }) }}"
+        }
+      },
+      "id": "postgres-log",
+      "name": "Log to Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2000, 600],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate 12-Week Cycle metadata\nconst now = new Date();\n\n// 12WY cycles end last week of March, June, Sept, Dec\nconst cycleEnds = [\n  new Date(now.getFullYear(), 2, 31),  // March 31\n  new Date(now.getFullYear(), 5, 30),  // June 30\n  new Date(now.getFullYear(), 8, 30),  // Sept 30\n  new Date(now.getFullYear(), 11, 31)  // Dec 31\n];\n\n// Find current cycle end\nlet cycleEnd = cycleEnds.find(d => d > now) || cycleEnds[0];\nif (!cycleEnds.find(d => d > now)) {\n  cycleEnd = new Date(now.getFullYear() + 1, 2, 31);\n}\n\n// Cycle start is 12 weeks before end\nconst cycleStart = new Date(cycleEnd);\ncycleStart.setDate(cycleStart.getDate() - 84);\n\n// Calculate week number (1-12) and if we're in week 13 (recovery)\nconst msPerWeek = 7 * 24 * 60 * 60 * 1000;\nconst weeksSinceStart = Math.floor((now - cycleStart) / msPerWeek) + 1;\n\nconst isRecoveryWeek = weeksSinceStart > 12;\nconst currentWeek = isRecoveryWeek ? 13 : Math.min(12, Math.max(1, weeksSinceStart));\n\n// Days remaining in cycle\nconst daysRemaining = Math.ceil((cycleEnd - now) / (24 * 60 * 60 * 1000));\n\nreturn {\n  json: {\n    cycle_start: cycleStart.toISOString().split('T')[0],\n    cycle_end: cycleEnd.toISOString().split('T')[0],\n    current_week: currentWeek,\n    is_recovery_week: isRecoveryWeek,\n    days_remaining: daysRemaining,\n    weeks_remaining: Math.ceil(daysRemaining / 7)\n  }\n};"
+      },
+      "id": "calc-12wy-cycle",
+      "name": "Calculate 12WY Cycle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 600]
+    }
+  ],
+  "connections": {
+    "Commander Schedule": {
+      "main": [[{ "node": "Merge Trigger Context", "type": "main", "index": 0 }]]
+    },
+    "Telegram Manual Trigger": {
+      "main": [[{ "node": "Filter /focus Command", "type": "main", "index": 0 }]]
+    },
+    "Filter /focus Command": {
+      "main": [[{ "node": "Merge Trigger Context", "type": "main", "index": 0 }]]
+    },
+    "Merge Trigger Context": {
+      "main": [[
+        { "node": "Get Notion Assignments", "type": "main", "index": 0 },
+        { "node": "Calculate 12WY Cycle", "type": "main", "index": 0 }
+      ]]
+    },
+    "Get Notion Assignments": {
+      "main": [[{ "node": "Prepare Task Context", "type": "main", "index": 0 }]]
+    },
+    "Prepare Task Context": {
+      "main": [[{ "node": "Ollama Select Focus Task", "type": "main", "index": 0 }]]
+    },
+    "Ollama Select Focus Task": {
+      "main": [[{ "node": "Process Selection & Lead Measure", "type": "main", "index": 0 }]]
+    },
+    "Process Selection & Lead Measure": {
+      "main": [[{ "node": "Format Telegram Message", "type": "main", "index": 0 }]]
+    },
+    "Format Telegram Message": {
+      "main": [[
+        { "node": "Send to Telegram", "type": "main", "index": 0 },
+        { "node": "Log to Postgres", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": {},
+  "tags": [
+    { "name": "12WY" },
+    { "name": "CoreDirective" },
+    { "name": "Commander" }
+  ],
+  "meta": {
+    "notes": "12-Week Year Commander: CRON at 09:00, 12:30, 19:00, 23:00 + manual /focus. Queries Notion Assignments, Ollama selects ONE task, tracks Lead Measures, sends Telegram with Notion link. Logs to Postgres nuclear_log."
+  }
+}

@@ -1,0 +1,259 @@
+{
+  "name": "Operation Nuclear Phase 1",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "op-nuclear-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-op-nuclear",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "command-check",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/target",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-command",
+      "name": "Filter /target Command",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"You are a professional B2B sales consultant. Generate a personalized outreach email for the following prospect. The email must:\\n1. Reference their specific company and role\\n2. Identify a relevant pain point in their industry\\n3. Propose a brief value proposition\\n4. Include a clear call-to-action (15-minute call)\\n5. Maintain NIST 800-53 professional communication standards\\n6. Keep it under 150 words\\n\\nProspect Details:\\nCompany: {{ $json.lead.company }}\\nContact Name: {{ $json.lead.name }}\\nTitle: {{ $json.lead.title }}\\nIndustry: {{ $json.lead.industry }}\\n\\nGenerate the email now:\",\n  \"stream\": false,\n  \"options\": {\n    \"temperature\": 0.7,\n    \"num_predict\": 512\n  }\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "ollama-generate",
+      "name": "Ollama Generate Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse leads from local JSON or return sample lead for testing\nconst telegramMessage = $input.first().json.message.text;\n\n// Extract company name if provided after /target command\nconst match = telegramMessage.match(/\\/target\\s+(.+)/i);\nconst targetCompany = match ? match[1].trim() : null;\n\n// Sample leads database (replace with Notion API call or leads.json read)\nconst leads = [\n  {\n    id: 1,\n    company: \"Acme Corp\",\n    name: \"Sarah Chen\",\n    title: \"VP of Engineering\",\n    industry: \"SaaS\",\n    email: \"sarah.chen@acme.example\"\n  },\n  {\n    id: 2,\n    company: \"TechFlow Industries\",\n    name: \"Marcus Johnson\",\n    title: \"CTO\",\n    industry: \"FinTech\",\n    email: \"mjohnson@techflow.example\"\n  },\n  {\n    id: 3,\n    company: \"DataSync Solutions\",\n    name: \"Elena Rodriguez\",\n    title: \"Director of IT Security\",\n    industry: \"Healthcare IT\",\n    email: \"e.rodriguez@datasync.example\"\n  }\n];\n\nlet selectedLead;\n\nif (targetCompany) {\n  // Find lead by company name (case-insensitive partial match)\n  selectedLead = leads.find(l => \n    l.company.toLowerCase().includes(targetCompany.toLowerCase())\n  );\n}\n\n// If no match or no target specified, get next lead (round-robin)\nif (!selectedLead) {\n  const lastIndex = $workflow.staticData.lastLeadIndex || 0;\n  const nextIndex = (lastIndex + 1) % leads.length;\n  $workflow.staticData.lastLeadIndex = nextIndex;\n  selectedLead = leads[nextIndex];\n}\n\nreturn {\n  json: {\n    lead: selectedLead,\n    chatId: $input.first().json.message.chat.id,\n    requestedBy: $input.first().json.message.from.username || $input.first().json.message.from.first_name\n  }\n};"
+      },
+      "id": "get-lead",
+      "name": "Get Next Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Ollama response and format for Telegram\nconst ollamaResponse = $input.first().json;\nconst lead = $('Get Next Lead').first().json.lead;\nconst chatId = $('Get Next Lead').first().json.chatId;\nconst requestedBy = $('Get Next Lead').first().json.requestedBy;\n\nlet emailDraft = '';\n\nif (ollamaResponse.response) {\n  emailDraft = ollamaResponse.response.trim();\n} else if (ollamaResponse.error) {\n  emailDraft = `Error generating email: ${ollamaResponse.error}`;\n} else {\n  emailDraft = 'Failed to generate email. Check Ollama connection.';\n}\n\n// Format Telegram message with markdown\nconst telegramMessage = `\n🎯 *Operation Nuclear - Draft Ready*\n\n*Target:* ${lead.company}\n*Contact:* ${lead.name} (${lead.title})\n*Industry:* ${lead.industry}\n\n---\n\n${emailDraft}\n\n---\n\n_Generated by Qwen 2.5 7B | Requested by @${requestedBy}_\n\nReply with:\n✅ /approve - Send email\n✏️ /edit <changes> - Request modifications\n❌ /skip - Move to next lead\n`;\n\nreturn {\n  json: {\n    chatId: chatId,\n    text: telegramMessage,\n    leadId: lead.id,\n    leadEmail: lead.email\n  }\n};"
+      },
+      "id": "format-response",
+      "name": "Format Telegram Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-send",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1340, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-op-nuclear",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "lead_targeted"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-action",
+      "name": "Log to Audit Trail",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "audit_log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "action": "={{ $json.action }}",
+            "lead_id": "={{ $('Get Next Lead').first().json.lead.id }}",
+            "requested_by": "={{ $('Get Next Lead').first().json.requestedBy }}",
+            "timestamp": "={{ $json.timestamp }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "postgres-audit",
+      "name": "PostgreSQL Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1560, 500],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter /target Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter /target Command": {
+      "main": [
+        [
+          {
+            "node": "Get Next Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Next Lead": {
+      "main": [
+        [
+          {
+            "node": "Ollama Generate Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Generate Email": {
+      "main": [
+        [
+          {
+            "node": "Format Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Telegram Response": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log to Audit Trail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Audit Trail": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": {
+    "lastLeadIndex": 0
+  },
+  "tags": [
+    {
+      "name": "operation-nuclear"
+    }
+  ],
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "cd-ae-instance"
+  }
+}

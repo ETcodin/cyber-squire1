@@ -1,0 +1,142 @@
+{
+  "name": "Telegram Webhook Startup Registration",
+  "nodes": [
+    {
+      "parameters": {
+        "events": ["workflow-started"]
+      },
+      "id": "startup-trigger",
+      "name": "On n8n Startup",
+      "type": "n8n-nodes-base.n8nTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "startup-webhook-registration"
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $credentials.accessToken }}/setWebhook",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $env.TELEGRAM_WEBHOOK_URL }}"
+            },
+            {
+              "name": "max_connections",
+              "value": "40"
+            },
+            {
+              "name": "allowed_updates",
+              "value": "[\"message\",\"callback_query\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-webhook",
+      "name": "Register Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $credentials.accessToken }}/getWebhookInfo",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
+        "options": {}
+      },
+      "id": "verify-webhook",
+      "name": "Verify Registration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format startup webhook registration result\nconst setWebhookResponse = $('Register Webhook').first().json;\nconst verifyResponse = $input.first().json;\nconst result = verifyResponse.result || {};\n\nconst registeredUrl = result.url || 'NOT SET';\nconst expectedUrl = $env.TELEGRAM_WEBHOOK_URL || 'NOT CONFIGURED';\nconst isSuccess = setWebhookResponse.ok && registeredUrl === expectedUrl;\nconst pendingUpdates = result.pending_update_count || 0;\nconst ipAddress = result.ip_address || 'N/A';\n\nconst logMessage = `\n=== TELEGRAM WEBHOOK STARTUP REGISTRATION ===\nTimestamp: ${new Date().toISOString()}\nStatus: ${isSuccess ? '✅ SUCCESS' : '❌ FAILED'}\nExpected URL: ${expectedUrl}\nRegistered URL: ${registeredUrl}\nPending Updates: ${pendingUpdates}\nIP Address: ${ipAddress}\n${result.last_error_message ? `Last Error: ${result.last_error_message}` : ''}\n============================================\n`;\n\nconsole.log(logMessage);\n\nreturn [{\n  json: {\n    success: isSuccess,\n    expectedUrl,\n    registeredUrl,\n    pendingUpdates,\n    ipAddress,\n    timestamp: new Date().toISOString(),\n    logMessage\n  }\n}];"
+      },
+      "id": "log-result",
+      "name": "Log Registration Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "On n8n Startup": {
+      "main": [
+        [
+          {
+            "node": "Register Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Registration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Registration": {
+      "main": [
+        [
+          {
+            "node": "Log Registration Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Telegram",
+      "id": "cd-tag-003"
+    },
+    {
+      "name": "Startup",
+      "id": "cd-tag-004"
+    }
+  ],
+  "meta": {
+    "notes": "Automatically registers Telegram webhook when n8n starts. Requires TELEGRAM_WEBHOOK_URL environment variable (e.g., https://cyber-squire.tigouetheory.com/webhook/supervisor-agent-v1). This ensures webhook persistence after container restarts.",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "coredirective-startup-webhook-registration"
+  }
+}

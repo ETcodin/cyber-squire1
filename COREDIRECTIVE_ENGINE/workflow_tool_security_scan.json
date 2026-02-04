@@ -1,0 +1,87 @@
+{
+  "name": "Tool: Security Scan",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonInput",
+        "jsonInput": {
+          "target": "={{ $json.query }}"
+        }
+      },
+      "id": "tool-input",
+      "name": "Tool Input",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflowInput",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst target = input.target || input.query || '';\n\n// Basic validation\nconst isValidTarget = /^[a-zA-Z0-9.-]+$/.test(target);\n\nif (!isValidTarget || target.length < 3) {\n  return {\n    json: {\n      error: true,\n      response: '❌ Invalid target. Please provide a valid domain or IP.'\n    }\n  };\n}\n\nreturn {\n  json: {\n    target: target,\n    error: false\n  }\n};"
+      },
+      "id": "validate-target",
+      "name": "Validate Target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.error }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "check-valid",
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "command": "=nmap -sV -sC --top-ports 100 -T4 {{ $json.target }} 2>&1 | head -50 || echo 'Nmap not available'"
+      },
+      "id": "nmap-scan",
+      "name": "Nmap Scan",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const nmapOutput = $input.first().json.stdout || 'No output';\nconst target = $('Validate Target').first().json.target;\n\nreturn {\n  json: {\n    response: `🔍 **Security Scan: ${target}**\\n\\n\\`\\`\\`\\n${nmapOutput.substring(0, 2000)}\\n\\`\\`\\`\\n\\n⚠️ _This is a basic scan. For full assessment, run nuclei separately._`\n  }\n};"
+      },
+      "id": "format-scan",
+      "name": "Format Scan Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {},
+      "id": "tool-output",
+      "name": "Tool Output",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflowOutput",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Tool Input": { "main": [[{ "node": "Validate Target", "type": "main", "index": 0 }]] },
+    "Validate Target": { "main": [[{ "node": "Is Valid?", "type": "main", "index": 0 }]] },
+    "Is Valid?": {
+      "main": [
+        [{ "node": "Tool Output", "type": "main", "index": 0 }],
+        [{ "node": "Nmap Scan", "type": "main", "index": 0 }]
+      ]
+    },
+    "Nmap Scan": { "main": [[{ "node": "Format Scan Results", "type": "main", "index": 0 }]] },
+    "Format Scan Results": { "main": [[{ "node": "Tool Output", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

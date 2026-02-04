@@ -1,0 +1,505 @@
+{
+  "name": "12WY War Room - Debt & Cash-Flow Intelligence",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute", "minute": 15 }]
+        },
+        "filters": {
+          "includeSpamTrash": false,
+          "q": "subject:(balance OR statement OR received OR payment OR due OR transaction) newer_than:1h"
+        },
+        "options": {
+          "maxResults": 10
+        }
+      },
+      "id": "gmail-trigger",
+      "name": "Gmail Financial Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract relevant email content\nconst email = $input.first().json;\n\nconst sender = email.from?.value?.[0]?.address || email.from || 'unknown';\nconst subject = email.subject || '';\nconst snippet = email.snippet || '';\nconst body = email.text || email.textPlain || snippet;\n\n// Clean and truncate body for Ollama\nconst cleanBody = body\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .substring(0, 2000);\n\nreturn {\n  json: {\n    email_id: email.id,\n    sender: sender,\n    subject: subject,\n    body_snippet: cleanBody,\n    received_at: email.date || new Date().toISOString()\n  }\n};"
+      },
+      "id": "extract-email",
+      "name": "Extract Email Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"You are a financial data extraction AI. Parse this email and extract financial information.\\n\\nEmail From: {{ $json.sender }}\\nSubject: {{ $json.subject }}\\nContent:\\n{{ $json.body_snippet }}\\n\\nExtract and return ONLY valid JSON (no markdown, no explanation):\\n{\\n  \\\"is_financial\\\": true/false,\\n  \\\"vendor\\\": \\\"<company name or null>\\\",\\n  \\\"transaction_type\\\": \\\"statement|payment|charge|refund|deposit|alert|other\\\",\\n  \\\"amount\\\": <number or null>,\\n  \\\"balance\\\": <current balance number or null>,\\n  \\\"apr\\\": <annual percentage rate or null>,\\n  \\\"minimum_payment\\\": <number or null>,\\n  \\\"due_date\\\": \\\"<YYYY-MM-DD or null>\\\",\\n  \\\"category\\\": \\\"credit_card|loan|bank|utility|subscription|income|other\\\",\\n  \\\"account_last4\\\": \\\"<last 4 digits or null>\\\",\\n  \\\"confidence\\\": 0.0-1.0\\n}\\n\\nIf this is not a financial email, set is_financial to false and other fields to null.\",\n  \"stream\": false,\n  \"options\": {\n    \"temperature\": 0.1,\n    \"num_predict\": 512\n  }\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "ollama-extract",
+      "name": "Ollama Extract Financial Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Ollama response\nconst ollamaRaw = $input.first().json.response || '{}';\nconst emailContext = $('Extract Email Content').first().json;\n\nlet parsed;\ntry {\n  const cleaned = ollamaRaw.replace(/```json\\n?|```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  return {\n    json: {\n      is_financial: false,\n      error: 'parse_failed',\n      raw: ollamaRaw.substring(0, 500),\n      ...emailContext\n    }\n  };\n}\n\n// Merge with email context\nreturn {\n  json: {\n    ...parsed,\n    email_id: emailContext.email_id,\n    email_sender: emailContext.sender,\n    email_subject: emailContext.subject,\n    received_at: emailContext.received_at,\n    processed_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-financial",
+      "name": "Parse Financial Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_financial }}",
+              "value2": true
+            }
+          ],
+          "number": [
+            {
+              "value1": "={{ $json.confidence }}",
+              "operation": "largerEqual",
+              "value2": 0.6
+            }
+          ]
+        },
+        "combinator": "and"
+      },
+      "id": "is-financial",
+      "name": "Is Financial Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO nuclear_log (event_type, payload, created_at) VALUES ('warroom_financial', $1::jsonb, NOW()) RETURNING id;",
+        "options": {
+          "queryParams": "={{ JSON.stringify($json) }}"
+        }
+      },
+      "id": "postgres-log-financial",
+      "name": "Log to Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1340, 300],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GSHEETS_FINANCIAL_TRACKER_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Transactions",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.received_at }}",
+            "Vendor": "={{ $json.vendor }}",
+            "Type": "={{ $json.transaction_type }}",
+            "Amount": "={{ $json.amount }}",
+            "Balance": "={{ $json.balance }}",
+            "APR": "={{ $json.apr }}",
+            "Min Payment": "={{ $json.minimum_payment }}",
+            "Due Date": "={{ $json.due_date }}",
+            "Category": "={{ $json.category }}",
+            "Account": "={{ $json.account_last4 }}",
+            "Confidence": "={{ $json.confidence }}",
+            "Email Subject": "={{ $json.email_subject }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "gsheets-transactions",
+      "name": "Write to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "credit_card",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "loan",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "is-debt",
+      "name": "Is Debt Account?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GSHEETS_FINANCIAL_TRACKER_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Debt_Burndown",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $now.toISODate() }}",
+            "Vendor": "={{ $json.vendor }}",
+            "Balance": "={{ $json.balance }}",
+            "APR": "={{ $json.apr }}",
+            "Min Payment": "={{ $json.minimum_payment }}",
+            "Due Date": "={{ $json.due_date }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "gsheets-debt",
+      "name": "Update Debt Burndown",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2000, 200],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GSHEETS_FINANCIAL_TRACKER_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Summary",
+          "mode": "list"
+        },
+        "filtersUI": {
+          "values": [{ "lookupColumn": "Metric", "lookupValue": "Financial Freedom Date" }]
+        },
+        "options": {}
+      },
+      "id": "get-current-summary",
+      "name": "Get Current Summary",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2000, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Financial Freedom Date using amortization\nconst debtData = $('Parse Financial Data').first().json;\nconst gumroadMonthly = parseFloat(process.env.GUMROAD_MONTHLY_AVG || 500); // Fallback\n\nconst balance = debtData.balance || 60000;\nconst apr = debtData.apr || 22.99; // Default high APR\nconst monthlyRate = (apr / 100) / 12;\n\n// Debt payment allocation (60% of Gumroad revenue)\nconst monthlyPayment = gumroadMonthly * 0.60;\n\n// Amortization formula: n = -log(1 - (r * PV / PMT)) / log(1 + r)\n// Where n = months, r = monthly rate, PV = present value (balance), PMT = payment\n\nlet monthsToPayoff;\nif (monthlyPayment <= balance * monthlyRate) {\n  // Payment doesn't cover interest\n  monthsToPayoff = Infinity;\n} else {\n  monthsToPayoff = Math.ceil(\n    -Math.log(1 - (monthlyRate * balance / monthlyPayment)) / Math.log(1 + monthlyRate)\n  );\n}\n\n// Calculate freedom date\nconst freedomDate = new Date();\nif (monthsToPayoff !== Infinity) {\n  freedomDate.setMonth(freedomDate.getMonth() + monthsToPayoff);\n}\n\n// Total interest paid\nconst totalPaid = monthlyPayment * monthsToPayoff;\nconst totalInterest = totalPaid - balance;\n\nreturn {\n  json: {\n    starting_balance: balance,\n    apr: apr,\n    monthly_payment: monthlyPayment,\n    months_to_payoff: monthsToPayoff === Infinity ? 'Never (increase payments)' : monthsToPayoff,\n    freedom_date: monthsToPayoff === Infinity ? 'N/A' : freedomDate.toISOString().split('T')[0],\n    total_interest: monthsToPayoff === Infinity ? 'N/A' : totalInterest.toFixed(2),\n    formula: `=-LOG(1-(${monthlyRate.toFixed(6)}*${balance}/${monthlyPayment.toFixed(2)}))/LOG(1+${monthlyRate.toFixed(6)})`,\n    vendor: debtData.vendor\n  }\n};"
+      },
+      "id": "calc-amortization",
+      "name": "Calculate Amortization",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GSHEETS_FINANCIAL_TRACKER_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Amortization",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Calculated At": "={{ $now.toISO() }}",
+            "Vendor": "={{ $json.vendor }}",
+            "Balance": "={{ $json.starting_balance }}",
+            "APR": "={{ $json.apr }}",
+            "Monthly Payment": "={{ $json.monthly_payment }}",
+            "Months to Payoff": "={{ $json.months_to_payoff }}",
+            "Freedom Date": "={{ $json.freedom_date }}",
+            "Total Interest": "={{ $json.total_interest }}",
+            "Formula": "={{ $json.formula }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "gsheets-amortization",
+      "name": "Write Amortization",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [2440, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Telegram alert for significant financial events\nconst data = $('Parse Financial Data').first().json;\nconst amort = $input.first().json;\n\n// Only alert for balances, statements, or payments > $100\nconst shouldAlert = \n  data.transaction_type === 'statement' ||\n  data.transaction_type === 'payment' ||\n  (data.amount && Math.abs(data.amount) > 100);\n\nif (!shouldAlert) {\n  return { json: { skip: true } };\n}\n\nconst emoji = data.category === 'income' ? '\\ud83d\\udcb0' : \n              data.transaction_type === 'payment' ? '\\u2705' : '\\ud83d\\udcb3';\n\nconst message = `\n${emoji} *WAR ROOM INTEL*\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n\n*${data.vendor || 'Unknown Vendor'}*\nType: ${data.transaction_type?.toUpperCase() || 'UNKNOWN'}\n${data.amount ? `Amount: $${Math.abs(data.amount).toFixed(2)}` : ''}\n${data.balance ? `Balance: $${data.balance.toFixed(2)}` : ''}\n${data.apr ? `APR: ${data.apr}%` : ''}\n${data.due_date ? `Due: ${data.due_date}` : ''}\n\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n\\ud83d\\udcc8 *FREEDOM PROJECTION*\n${amort.freedom_date !== 'N/A' ? `Target Date: ${amort.freedom_date}\\nMonths Remaining: ${amort.months_to_payoff}` : '\\u26a0\\ufe0f Increase payments to make progress'}\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n\n_Logged to Sheets & Postgres_\n`;\n\nreturn {\n  json: {\n    chat_id: process.env.TELEGRAM_WARROOM_CHAT_ID,\n    text: message,\n    parse_mode: 'Markdown'\n  }\n};"
+      },
+      "id": "format-warroom-alert",
+      "name": "Format War Room Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.skip }}",
+              "value2": true,
+              "operation": "notEqual"
+            }
+          ]
+        }
+      },
+      "id": "should-send-alert",
+      "name": "Should Send Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-warroom-telegram",
+      "name": "Send War Room Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [3100, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 18 * * 0" }]
+        }
+      },
+      "id": "weekly-summary-trigger",
+      "name": "Weekly Summary (Sunday 6PM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 600]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $env.GSHEETS_FINANCIAL_TRACKER_ID }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Transactions",
+          "mode": "list"
+        },
+        "filtersUI": {
+          "values": [{ "lookupColumn": "Date", "lookupValue": ">={{ $now.minus({days: 7}).toISODate() }}" }]
+        },
+        "options": { "returnAllMatches": true }
+      },
+      "id": "get-weekly-transactions",
+      "name": "Get Weekly Transactions",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 600],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-oauth-cred",
+          "name": "Google OAuth CoreDirective"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate weekly financial summary\nconst transactions = $input.all();\n\nconst summary = {\n  total_transactions: transactions.length,\n  by_category: {},\n  total_spent: 0,\n  total_income: 0,\n  debt_payments: 0,\n  largest_expense: { vendor: 'None', amount: 0 }\n};\n\nfor (const t of transactions) {\n  const data = t.json;\n  const amount = parseFloat(data.Amount) || 0;\n  const category = data.Category || 'other';\n  \n  // Track by category\n  summary.by_category[category] = (summary.by_category[category] || 0) + Math.abs(amount);\n  \n  // Track income vs expenses\n  if (category === 'income' || data.Type === 'deposit') {\n    summary.total_income += amount;\n  } else {\n    summary.total_spent += Math.abs(amount);\n    \n    // Track debt payments\n    if (data.Type === 'payment' && (category === 'credit_card' || category === 'loan')) {\n      summary.debt_payments += Math.abs(amount);\n    }\n    \n    // Track largest expense\n    if (Math.abs(amount) > summary.largest_expense.amount) {\n      summary.largest_expense = { vendor: data.Vendor, amount: Math.abs(amount) };\n    }\n  }\n}\n\n// Calculate savings rate\nsummary.net_flow = summary.total_income - summary.total_spent;\nsummary.savings_rate = summary.total_income > 0 \n  ? ((summary.total_income - summary.total_spent) / summary.total_income * 100).toFixed(1)\n  : 0;\n\nreturn { json: summary };"
+      },
+      "id": "calc-weekly-summary",
+      "name": "Calculate Weekly Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format weekly execution score message\nconst summary = $input.first().json;\n\n// Build category breakdown\nconst categoryLines = Object.entries(summary.by_category)\n  .sort((a, b) => b[1] - a[1])\n  .map(([cat, amt]) => `  \\u2022 ${cat}: $${amt.toFixed(2)}`)\n  .join('\\n');\n\nconst netEmoji = summary.net_flow >= 0 ? '\\ud83d\\udfe2' : '\\ud83d\\udd34';\n\nconst message = `\n\\ud83d\\udcca *12WY WAR ROOM - WEEKLY REPORT*\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n\n*CASH FLOW*\n\\ud83d\\udcb0 Income: $${summary.total_income.toFixed(2)}\n\\ud83d\\udcb8 Spent: $${summary.total_spent.toFixed(2)}\n${netEmoji} Net: $${summary.net_flow.toFixed(2)}\n\\ud83d\\udcaf Savings Rate: ${summary.savings_rate}%\n\n*DEBT OPERATIONS*\n\\ud83c\\udfaf Debt Payments: $${summary.debt_payments.toFixed(2)}\n\\ud83d\\udcc9 Target: 60% of income = $${(summary.total_income * 0.6).toFixed(2)}\n\n*CATEGORY BREAKDOWN*\n${categoryLines || '  No transactions'}\n\n*TOP EXPENSE*\n\\ud83d\\udca1 ${summary.largest_expense.vendor}: $${summary.largest_expense.amount.toFixed(2)}\n\n\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\\u2501\n_Transactions Processed: ${summary.total_transactions}_\n`;\n\nreturn {\n  json: {\n    chat_id: process.env.TELEGRAM_WARROOM_CHAT_ID,\n    text: message,\n    parse_mode: 'Markdown'\n  }\n};"
+      },
+      "id": "format-weekly-report",
+      "name": "Format Weekly Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-weekly-report",
+      "name": "Send Weekly Report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 600],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Financial Trigger": {
+      "main": [[{ "node": "Extract Email Content", "type": "main", "index": 0 }]]
+    },
+    "Extract Email Content": {
+      "main": [[{ "node": "Ollama Extract Financial Data", "type": "main", "index": 0 }]]
+    },
+    "Ollama Extract Financial Data": {
+      "main": [[{ "node": "Parse Financial Data", "type": "main", "index": 0 }]]
+    },
+    "Parse Financial Data": {
+      "main": [[{ "node": "Is Financial Email?", "type": "main", "index": 0 }]]
+    },
+    "Is Financial Email?": {
+      "main": [
+        [{ "node": "Log to Postgres", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Log to Postgres": {
+      "main": [[{ "node": "Write to Google Sheets", "type": "main", "index": 0 }]]
+    },
+    "Write to Google Sheets": {
+      "main": [[{ "node": "Is Debt Account?", "type": "main", "index": 0 }]]
+    },
+    "Is Debt Account?": {
+      "main": [
+        [
+          { "node": "Update Debt Burndown", "type": "main", "index": 0 },
+          { "node": "Get Current Summary", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    },
+    "Update Debt Burndown": {
+      "main": [[{ "node": "Calculate Amortization", "type": "main", "index": 0 }]]
+    },
+    "Get Current Summary": {
+      "main": [[{ "node": "Calculate Amortization", "type": "main", "index": 0 }]]
+    },
+    "Calculate Amortization": {
+      "main": [[{ "node": "Write Amortization", "type": "main", "index": 0 }]]
+    },
+    "Write Amortization": {
+      "main": [[{ "node": "Format War Room Alert", "type": "main", "index": 0 }]]
+    },
+    "Format War Room Alert": {
+      "main": [[{ "node": "Should Send Alert?", "type": "main", "index": 0 }]]
+    },
+    "Should Send Alert?": {
+      "main": [
+        [{ "node": "Send War Room Alert", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Weekly Summary (Sunday 6PM)": {
+      "main": [[{ "node": "Get Weekly Transactions", "type": "main", "index": 0 }]]
+    },
+    "Get Weekly Transactions": {
+      "main": [[{ "node": "Calculate Weekly Summary", "type": "main", "index": 0 }]]
+    },
+    "Calculate Weekly Summary": {
+      "main": [[{ "node": "Format Weekly Report", "type": "main", "index": 0 }]]
+    },
+    "Format Weekly Report": {
+      "main": [[{ "node": "Send Weekly Report", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": [
+    { "name": "12WY" },
+    { "name": "CoreDirective" },
+    { "name": "WarRoom" },
+    { "name": "Finance" }
+  ],
+  "meta": {
+    "notes": "12WY War Room: Gmail IMAP trigger for financial emails -> Ollama extracts vendor/amt/apr/balance/category -> Logs to Postgres -> Writes to Google Sheets -> Updates Debt Burndown -> Calculates Financial Freedom Date via amortization formula -> Telegram alerts. Weekly summary every Sunday 6PM."
+  }
+}

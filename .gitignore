@@ -74,3 +74,4 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+credentials_cloudflare.json

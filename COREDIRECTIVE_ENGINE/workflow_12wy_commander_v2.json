@@ -1,0 +1,117 @@
+{
+  "name": "12WY Commander",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "12wy-commander",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-op-nuclear",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "focus-cmd",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/focus",
+              "operator": { "type": "string", "operation": "startsWith" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-focus",
+      "name": "Filter /focus",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"You are a 12-Week Year productivity coach. Current time: {{ $now.format('HH:mm') }}, Day: {{ $now.format('EEEE') }}.\\n\\nSample tasks for testing:\\n1. Complete Lab Report (High priority, Due: Tomorrow)\\n2. Review security module (Medium, Due: 3 days)\\n3. Draft proposal (High, Due: 2 days)\\n\\nSelect ONE task for deep work. Respond ONLY with JSON:\\n{\\\"selected_index\\\": <num>, \\\"task_name\\\": \\\"<name>\\\", \\\"reasoning\\\": \\\"<why>\\\", \\\"duration_minutes\\\": <num>, \\\"pomodoros\\\": <num>}\",\n  \"stream\": false,\n  \"options\": { \"temperature\": 0.3, \"num_predict\": 256 }\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "ollama-select",
+      "name": "Ollama Select Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ollama = $input.first().json;\nconst chat = $('Telegram Trigger').first().json.message.chat.id;\nconst user = $('Telegram Trigger').first().json.message.from.username || 'User';\n\nlet response;\ntry {\n  const cleaned = (ollama.response || '{}').replace(/```json\\n?|```\\n?/g, '').trim();\n  response = JSON.parse(cleaned);\n} catch (e) {\n  response = { task_name: 'Error parsing', reasoning: ollama.response?.substring(0, 200) };\n}\n\n// Session count placeholder (will be updated by DB query in future version)\nconst sessions = 1;\nconst progress = Math.min(100, Math.round((sessions / 28) * 100));\nconst bar = '█'.repeat(Math.round(progress/10)) + '░'.repeat(10 - Math.round(progress/10));\n\nconst msg = `🎯 *12WY COMMANDER*\\n━━━━━━━━━━━━━━━━━━━━\\n\\n*FOCUS TARGET*\\n${response.task_name || 'Unknown'}\\n\\n⏱ Duration: ${response.duration_minutes || 45} min\\n🍅 Pomodoros: ${response.pomodoros || 2}\\n\\n💡 *Reasoning*\\n_${response.reasoning || 'Selected for you'}_\\n\\n━━━━━━━━━━━━━━━━━━━━\\n📊 *LEAD MEASURE*\\n${bar} ${progress}%\\nSession ${sessions} of 28 this week\\n━━━━━━━━━━━━━━━━━━━━\\n\\n_Requested by @${user}_`;\n\nreturn { json: { chatId: chat, text: msg, task: response.task_name, sessions: sessions } };"
+      },
+      "id": "format-msg",
+      "name": "Format Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "send-telegram",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1120, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-op-nuclear",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO nuclear_log (event_type, payload) VALUES ('commander_dispatch', $1::jsonb);",
+        "options": {
+          "queryParams": "={{ JSON.stringify({ task: $json.task, sessions: $json.sessions, timestamp: $now.toISO() }) }}"
+        }
+      },
+      "id": "log-postgres",
+      "name": "Log to Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1120, 500],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": { "main": [[{ "node": "Filter /focus", "type": "main", "index": 0 }]] },
+    "Filter /focus": { "main": [[{ "node": "Ollama Select Task", "type": "main", "index": 0 }]] },
+    "Ollama Select Task": { "main": [[{ "node": "Format Message", "type": "main", "index": 0 }]] },
+    "Format Message": { "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }, { "node": "Log to Postgres", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": {},
+  "tags": [{ "name": "12WY" }]
+}

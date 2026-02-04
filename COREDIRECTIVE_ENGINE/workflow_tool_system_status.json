@@ -1,0 +1,51 @@
+{
+  "name": "Tool: System Status",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "tool-input",
+      "name": "Tool Input",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflowInput",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "command": "echo '=== DOCKER ===' && docker ps --format 'table {{.Names}}\t{{.Status}}' 2>/dev/null || echo 'Docker not available' && echo '\\n=== MEMORY ===' && free -h 2>/dev/null || vm_stat | head -5 && echo '\\n=== DISK ===' && df -h / | tail -1 && echo '\\n=== LOAD ===' && uptime"
+      },
+      "id": "run-checks",
+      "name": "Run System Checks",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = $input.first().json.stdout || 'No output';\nconst stderr = $input.first().json.stderr || '';\n\nlet status = '🟢 All Systems Operational';\nif (stderr.includes('error') || output.includes('unhealthy')) {\n  status = '🔴 Issues Detected';\n}\n\nreturn {\n  json: {\n    response: `**System Status Report**\\n\\n${status}\\n\\n\\`\\`\\`\\n${output}\\n\\`\\`\\``\n  }\n};"
+      },
+      "id": "format-output",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "tool-output",
+      "name": "Tool Output",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflowOutput",
+      "typeVersion": 1,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Tool Input": { "main": [[{ "node": "Run System Checks", "type": "main", "index": 0 }]] },
+    "Run System Checks": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Format Output": { "main": [[{ "node": "Tool Output", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

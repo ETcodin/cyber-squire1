@@ -1,0 +1,318 @@
+{
+  "name": "Telegram Supervisor Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "tg-trigger",
+      "name": "Telegram Ingestion",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "webhookId": "supervisor-agent-v1",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract message_id for deduplication\nconst raw = $input.first().json;\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\nconst messageId = message.message_id || callbackMsg.message_id;\nconst chatId = message.chat?.id || callbackMsg.chat?.id;\nconst userId = message.from?.id || callback.from?.id;\nconst text = (message.text || callback.data || '').trim();\n\nif (!messageId || !chatId) {\n  throw new Error('Could not extract message_id or chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    message_id: messageId,\n    chat_id: chatId,\n    user_id: userId,\n    message_text: text,\n    raw: raw\n  }\n};"
+      },
+      "id": "extract-message-id",
+      "name": "Extract Message ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO telegram_message_log (message_id, chat_id, user_id, message_text, status)\nVALUES ($1, $2, $3, $4, 'processing')\nON CONFLICT (message_id) DO NOTHING\nRETURNING message_id;",
+        "options": {
+          "queryReplacement": "={{ $json.message_id }},={{ $json.chat_id }},={{ $json.user_id }},={{ $json.message_text }}"
+        }
+      },
+      "id": "check-duplicate",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [680, 400],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "duplicate-check",
+              "leftValue": "={{ $json.length === 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-duplicate",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log duplicate message skip\nconst ctx = $('Extract Message ID').first().json;\n\nconsole.log(`DUPLICATE_SKIPPED: message_id=${ctx.message_id}, chat_id=${ctx.chat_id}`);\n\nreturn {\n  json: {\n    status: 'duplicate_skipped',\n    message_id: ctx.message_id,\n    chat_id: ctx.chat_id\n  }\n};"
+      },
+      "id": "skip-duplicate",
+      "name": "Skip Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and normalize Telegram input for processing\nconst ctx = $('Extract Message ID').first().json;\nconst raw = ctx.raw;\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\nconst chatId = message.chat?.id || callbackMsg.chat?.id;\nconst text = (message.text || callback.data || '').trim();\nconst user = message.from?.username || callback.from?.username || 'User';\nconst firstName = message.from?.first_name || callback.from?.first_name || 'Friend';\nconst messageId = ctx.message_id;\n\nif (!chatId) {\n  throw new Error('Could not extract chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    chatId: String(chatId),\n    messageId: messageId,\n    text,\n    user,\n    firstName,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log incoming message for debugging and audit trail\nconst ctx = $input.first().json;\nconst executionId = $execution.id || 'N/A';\nconst timestamp = new Date().toISOString();\n\nconst logEntry = {\n  event: 'message_received',\n  timestamp,\n  chatId: ctx.chatId,\n  user: ctx.user,\n  messageLength: (ctx.text || '').length,\n  executionId,\n  messageId: ctx.messageId,\n  rawText: ctx.text?.substring(0, 100) // First 100 chars for privacy\n};\n\nconsole.log('SUPERVISOR_AGENT_INCOMING:', JSON.stringify(logEntry));\n\n// Pass through original data\nreturn { json: ctx };"
+      },
+      "id": "log-incoming",
+      "name": "Log Incoming Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 360]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.chatId }}",
+        "tableName": "chat_memory",
+        "contextWindowLength": 13
+      },
+      "id": "postgres-memory",
+      "name": "Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1,
+      "position": [1560, 680],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are CYBER-SQUIRE, Emmanuel Tigoue's AI operations commander. You maintain Consultative Authority - you advise decisively, not passively.\n\n## CORE IDENTITY\n- User: Emmanuel (ET), Security Solutions Architect (CASP+, CCNA), Sickle Cell warrior\n- Framework: 12-Week Year (12WY) with ADHD-optimized execution\n- Energy: Finite and precious - every interaction must be high-ROI\n\n## RESPONSE FORMAT (ADHD-FRIENDLY)\n1. Lead with the answer - no preambles\n2. Use bullets and visual hierarchy\n3. Bold key actions: **Do this now**\n4. Keep responses under 200 words unless detail requested\n5. End with ONE clear next action\n\n## AVAILABLE TOOLS\nYou have access to specialized sub-workflows. Call them when appropriate:\n\n1. **ADHD_Commander** - When user needs:\n   - Focus task selection from Notion\n   - Help with analysis paralysis\n   - Keywords: focus, task, what should I do, priority, stuck\n\n2. **Finance_Manager** - When user mentions:\n   - Money, expenses, income, payments\n   - AWS costs, subscriptions, debt\n   - Keywords: paid, spent, earned, cost, bill, money\n\n## ROUTING LOGIC\n- If message is clearly financial → call Finance_Manager\n- If message requests focus/task help → call ADHD_Commander\n- If general question → answer directly with context awareness\n- If ambiguous → ask ONE clarifying question\n\n## CONSULTATIVE AUTHORITY\n- Don't ask \"would you like me to...\" - just do it\n- Provide recommendations, not options\n- Manage energy: \"This can wait until tomorrow\" is valid advice\n- Reference previous conversation context when relevant\n\n## SICKLE CELL AWARENESS\n- High pain days = reduce cognitive load\n- Suggest breaks and pacing when sessions are long\n- Never guilt-trip about productivity\n\nCurrent time context is provided in each message. Use it for time-aware recommendations."
+        }
+      },
+      "id": "ai-agent",
+      "name": "Supervisor Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [1560, 520]
+    },
+    {
+      "parameters": {
+        "modelId": "qwen2.5:7b",
+        "options": {
+          "temperature": 0.4,
+          "numPredict": 512
+        }
+      },
+      "id": "ollama-model",
+      "name": "Ollama Qwen",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "ollamaApi": {
+          "id": "Ym2DLXwZDPjfqjdg",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "ADHD_Commander",
+        "description": "Call this tool when the user needs help selecting a focus task, is experiencing analysis paralysis, or asks what they should work on. This queries their Notion task database and uses AI to select the highest-ROI task for the current time of day.",
+        "workflowId": {
+          "__rl": true,
+          "value": "LBIatPU7RFpT7QXX",
+          "mode": "id"
+        }
+      },
+      "id": "tool-adhd",
+      "name": "ADHD Commander Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1400, 680]
+    },
+    {
+      "parameters": {
+        "name": "Finance_Manager",
+        "description": "Call this tool when the user mentions anything related to money, expenses, income, payments, AWS costs, subscriptions, or debt tracking. It categorizes the transaction and logs it to the financial ledger.",
+        "workflowId": {
+          "__rl": true,
+          "value": "98C69UAeJH3pFdhC",
+          "mode": "id"
+        }
+      },
+      "id": "tool-finance",
+      "name": "Finance Manager Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1720, 680]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse Input').first().json;\nconst agent = $input.first().json;\n\n// Extract agent response\nlet response = agent.output || agent.text || 'Processing complete.';\n\n// Truncate if too long for Telegram (4096 char limit)\nif (response.length > 4000) {\n  response = response.substring(0, 3997) + '...';\n}\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    messageId: ctx.messageId,\n    text: response\n  }\n};"
+      },
+      "id": "format-output",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log outgoing response for debugging and audit trail\nconst startTime = $('Log Incoming Message').first().json.timestamp;\nconst response = $input.first().json;\nconst timestamp = new Date().toISOString();\nconst executionId = $execution.id || 'N/A';\n\n// Calculate latency\nconst latencyMs = startTime \n  ? new Date(timestamp).getTime() - new Date(startTime).getTime() \n  : null;\n\nconst logEntry = {\n  event: 'message_sent',\n  timestamp,\n  chatId: response.chatId,\n  responseLength: (response.text || '').length,\n  latencyMs,\n  executionId,\n  messageId: response.messageId\n};\n\nconsole.log('SUPERVISOR_AGENT_OUTGOING:', JSON.stringify(logEntry));\n\n// Pass through response data\nreturn { json: response };"
+      },
+      "id": "log-outgoing",
+      "name": "Log Outgoing Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 520]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2000, 520],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE telegram_message_log\nSET status = 'completed', processed_at = NOW()\nWHERE message_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.messageId }}"
+        }
+      },
+      "id": "mark-complete",
+      "name": "Mark Complete",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2220, 520],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Ingestion": {
+      "main": [[{ "node": "Extract Message ID", "type": "main", "index": 0 }]]
+    },
+    "Extract Message ID": {
+      "main": [[{ "node": "Check Duplicate", "type": "main", "index": 0 }]]
+    },
+    "Check Duplicate": {
+      "main": [[{ "node": "Is Duplicate?", "type": "main", "index": 0 }]]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [{ "node": "Skip Duplicate", "type": "main", "index": 0 }],
+        [{ "node": "Parse Input", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Input": {
+      "main": [[{ "node": "Log Incoming Message", "type": "main", "index": 0 }]]
+    },
+    "Log Incoming Message": {
+      "main": [[{ "node": "Supervisor Agent", "type": "main", "index": 0 }]]
+    },
+    "Chat Memory": {
+      "ai_memory": [[{ "node": "Supervisor Agent", "type": "ai_memory", "index": 0 }]]
+    },
+    "Ollama Qwen": {
+      "ai_languageModel": [[{ "node": "Supervisor Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "ADHD Commander Tool": {
+      "ai_tool": [[{ "node": "Supervisor Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "Finance Manager Tool": {
+      "ai_tool": [[{ "node": "Supervisor Agent", "type": "ai_tool", "index": 0 }]]
+    },
+    "Supervisor Agent": {
+      "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]]
+    },
+    "Format Output": {
+      "main": [[{ "node": "Log Outgoing Response", "type": "main", "index": 0 }]]
+    },
+    "Log Outgoing Response": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    },
+    "Send Response": {
+      "main": [[{ "node": "Mark Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "System: Error Handler"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "12WY" },
+    { "name": "Supervisor" },
+    { "name": "Agentic" },
+    { "name": "Dedup" }
+  ],
+  "meta": {
+    "notes": "Supervisor Agent v2: AI-driven tool selection with PostgreSQL message deduplication. Prevents duplicate processing during message bursts (SC-2.2, SC-2.4). Uses 13-message chat memory window. Tools: ADHD Commander, Finance Manager.",
+    "templateCredsSetupCompleted": true
+  }
+}
