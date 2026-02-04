@@ -96,18 +96,18 @@ Plans:
 4. **SC-3.4**: Routing decision logged with confidence score
 5. **SC-3.5**: Average routing latency <3 seconds
 
-### Plans
-1. Create LangChain AI Agent node with routing prompt
-2. Define tool schemas for each sub-workflow
-3. Implement routing confidence threshold (>0.7 executes, <0.7 clarifies)
-4. Create "unknown intent" fallback response
-5. Add latency monitoring to routing step
-6. Build test suite with 20 natural language variations
-7. Tune routing prompt for accuracy
+**Plans:** 4 plans in 3 waves
+
+Plans:
+- [ ] 03-01-PLAN.md — Configure AI Agent with routing prompt and logging (Wave 1)
+- [ ] 03-02-PLAN.md — Define tool schemas for all sub-workflows (Wave 1)
+- [ ] 03-03-PLAN.md — Implement confidence threshold and fallback handling (Wave 2)
+- [ ] 03-04-PLAN.md — Integration testing and latency validation (Wave 3, checkpoint)
 
 ### Exit Gate
 - [ ] 18/20 test cases route correctly
 - [ ] Confidence scores logged for audit
+- [ ] Average routing latency <3 seconds
 
 ---
 

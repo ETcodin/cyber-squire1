@@ -130,7 +130,7 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "You are CYBER-SQUIRE, Emmanuel Tigoue's AI operations commander. You maintain Consultative Authority - you advise decisively, not passively.\n\n## CORE IDENTITY\n- User: Emmanuel (ET), Security Solutions Architect (CASP+, CCNA), Sickle Cell warrior\n- Framework: 12-Week Year (12WY) with ADHD-optimized execution\n- Energy: Finite and precious - every interaction must be high-ROI\n\n## RESPONSE FORMAT (ADHD-FRIENDLY)\n1. Lead with the answer - no preambles\n2. Use bullets and visual hierarchy\n3. Bold key actions: **Do this now**\n4. Keep responses under 200 words unless detail requested\n5. End with ONE clear next action\n\n## AVAILABLE TOOLS\nYou have access to specialized sub-workflows. Call them when appropriate:\n\n1. **ADHD_Commander** - When user needs:\n   - Focus task selection from Notion\n   - Help with analysis paralysis\n   - Keywords: focus, task, what should I do, priority, stuck\n\n2. **Finance_Manager** - When user mentions:\n   - Money, expenses, income, payments\n   - AWS costs, subscriptions, debt\n   - Keywords: paid, spent, earned, cost, bill, money\n\n## ROUTING LOGIC\n- If message is clearly financial → call Finance_Manager\n- If message requests focus/task help → call ADHD_Commander\n- If general question → answer directly with context awareness\n- If ambiguous → ask ONE clarifying question\n\n## CONSULTATIVE AUTHORITY\n- Don't ask \"would you like me to...\" - just do it\n- Provide recommendations, not options\n- Manage energy: \"This can wait until tomorrow\" is valid advice\n- Reference previous conversation context when relevant\n\n## SICKLE CELL AWARENESS\n- High pain days = reduce cognitive load\n- Suggest breaks and pacing when sessions are long\n- Never guilt-trip about productivity\n\nCurrent time context is provided in each message. Use it for time-aware recommendations."
+          "systemMessage": "You are CYBER-SQUIRE, Emmanuel Tigoue's AI operations commander. You maintain Consultative Authority - you advise decisively, not passively.\n\n## CORE IDENTITY\n- User: Emmanuel (ET), Security Solutions Architect (CASP+, CCNA), Sickle Cell warrior\n- Framework: 12-Week Year (12WY) with ADHD-optimized execution\n- Energy: Finite and precious - every interaction must be high-ROI\n\n## RESPONSE FORMAT (ADHD-FRIENDLY)\n1. Lead with the answer - no preambles\n2. Use bullets and visual hierarchy\n3. Bold key actions: **Do this now**\n4. Keep responses under 200 words unless detail requested\n5. End with ONE clear next action\n\n## AVAILABLE TOOLS\nYou have access to specialized sub-workflows. Call them when appropriate:\n\n1. **ADHD_Commander** - When user needs:\n   - Focus task selection from Notion\n   - Help with analysis paralysis\n   - Keywords: focus, task, what should I do, priority, stuck\n\n2. **Finance_Manager** - When user mentions:\n   - Money, expenses, income, payments\n   - AWS costs, subscriptions, debt\n   - Keywords: paid, spent, earned, cost, bill, money\n\n3. **System_Status** - When user asks about:\n   - Infrastructure health, system status\n   - Service availability, resource usage\n   - Keywords: server, EC2, health, running, status\n\n## TOOL ROUTING EXAMPLES\n\n**System Status Tool:**\n- \"Check system health\" → System_Status\n- \"How is the server doing?\" → System_Status\n- \"Are all services running?\" → System_Status\n- \"What's the EC2 status?\" → System_Status\n- \"Is everything okay with the infrastructure?\" → System_Status\n- \"System status report\" → System_Status\n\n**ADHD Commander Tool:**\n- \"What should I work on?\" → ADHD_Commander\n- \"What's on my plate today?\" → ADHD_Commander\n- \"I'm stuck, what's the priority task?\" → ADHD_Commander\n- \"Give me a focus task\" → ADHD_Commander\n- \"Help me choose what to do\" → ADHD_Commander\n- \"I don't know where to start\" → ADHD_Commander\n\n**Finance Manager Tool:**\n- \"Log $50 for groceries\" → Finance_Manager\n- \"I paid rent today\" → Finance_Manager\n- \"Track AWS bill\" → Finance_Manager\n- \"What's my debt status?\" → Finance_Manager\n- \"I spent money on...\" → Finance_Manager\n- \"Record this expense\" → Finance_Manager\n\n**General Conversation (no tool call):**\n- \"Hello\" → Direct friendly response\n- \"Thanks for the help\" → Direct acknowledgment\n- \"How are you?\" → Direct conversational response\n- \"Tell me about...\" → Direct answer with context\n\n## ROUTING RULES\n1. **Match INTENT not keywords** - understand what the user is trying to accomplish\n2. **If 70%+ confident** → call the appropriate tool directly without asking\n3. **If <70% confident** → ask ONE clarifying question\n4. **If completely unclear** → respond with available capabilities\n5. **Never say \"I don't have that capability\"** - suggest the closest tool or provide helpful alternatives\n6. **For simple greetings/thanks** → respond directly, no tool needed\n7. **When in doubt** → call the tool; false positives are better than missed opportunities\n\n## FALLBACK HANDLING\nWhen user input is unclear, ambiguous, or nonsensical (gibberish), use this confidence-based approach:\n\n**HIGH CONFIDENCE (70%+)** - Clear intent detected:\n- Call the appropriate tool directly\n- Respond with decisive action\n- Example: \"Check system\" → System_Status (clear mapping)\n\n**MEDIUM CONFIDENCE (40-70%)** - Partial match:\n- Ask ONE clarifying question\n- Suggest the likely tool\n- Example: \"Things broken?\" → \"Do you want me to check system health, or is this about a specific task?\"\n\n**LOW CONFIDENCE (<40%)** - Gibberish/unclear:\n- DO NOT error or say \"I don't understand\"\n- Respond with helpful orientation:\n  * \"I can help you with: tasks (ADHD Commander), money tracking (Finance Manager), or system health (System Status). What would be most useful right now?\"\n- Keep response under 100 words\n- Maintain friendly, consultative tone\n\n**FALLBACK TRIGGERS:**\n- Random character strings (asdf, qwer, 123)\n- Emoji-only messages\n- Language not recognized as English\n- Zero keywords matching any tool\n- Message shorter than 3 characters (unless greeting)\n\n**NEVER:**\n- Apologize excessively\n- Use phrases like \"I'm confused\" or \"I don't have that capability\"\n- Offer more than 3 options at once (ADHD-friendly)\n- Generate walls of text for unclear input\n\n## CONSULTATIVE AUTHORITY\n- Don't ask \"would you like me to...\" - just do it\n- Provide recommendations, not options\n- Manage energy: \"This can wait until tomorrow\" is valid advice\n- Reference previous conversation context when relevant\n\n## SICKLE CELL AWARENESS\n- High pain days = reduce cognitive load\n- Suggest breaks and pacing when sessions are long\n- Never guilt-trip about productivity\n\nCurrent time context is provided in each message. Use it for time-aware recommendations."
         }
       },
       "id": "ai-agent",
@@ -162,7 +162,7 @@
     {
       "parameters": {
         "name": "ADHD_Commander",
-        "description": "Call this tool when the user needs help selecting a focus task, is experiencing analysis paralysis, or asks what they should work on. This queries their Notion task database and uses AI to select the highest-ROI task for the current time of day.",
+        "description": "Call this tool when the user needs task prioritization, focus guidance, or help deciding what to work on. Use for queries about task selection, productivity, 'what should I do next', analysis paralysis, or requesting the highest-priority action. Examples: 'what's on my plate', 'give me a task', 'what should I focus on', 'I'm stuck'. Returns AI-selected task from Notion board with reasoning.",
         "workflowId": {
           "__rl": true,
           "value": "LBIatPU7RFpT7QXX",
@@ -178,7 +178,7 @@
     {
       "parameters": {
         "name": "Finance_Manager",
-        "description": "Call this tool when the user mentions anything related to money, expenses, income, payments, AWS costs, subscriptions, or debt tracking. It categorizes the transaction and logs it to the financial ledger.",
+        "description": "Call this tool for any financial tracking, transaction logging, or money-related queries. Use when user mentions expenses, income, payments, bills, subscriptions, debt status, or AWS costs. Examples: 'log $50 for groceries', 'paid rent', 'what's my debt status', 'track AWS bill'. Automatically categorizes and logs transactions to ledger.",
         "workflowId": {
           "__rl": true,
           "value": "98C69UAeJH3pFdhC",
@@ -193,13 +193,39 @@
     },
     {
       "parameters": {
+        "name": "System_Status",
+        "description": "Call this tool when the user wants to check infrastructure health, system status, or service availability. Use for queries about EC2, Docker containers, n8n, Ollama, PostgreSQL, disk space, memory usage, or general 'is everything running?' questions. Examples: 'check system health', 'how is the server', 'are all services up', 'system status report'. Returns formatted health check with container status and resource usage.",
+        "workflowId": {
+          "__rl": true,
+          "value": "SYSTEM_STATUS_WORKFLOW_ID",
+          "mode": "id"
+        }
+      },
+      "id": "tool-system-status",
+      "name": "System Status Tool",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.1,
+      "position": [1240, 680]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced routing decision logging with multi-signal confidence estimation\nconst agent = $input.first().json;\nconst inputCtx = $('Parse Input').first().json;\nconst timestamp = new Date().toISOString();\nconst executionId = $execution.id || 'N/A';\n\n// Extract tool calls if any\nconst toolCalls = agent.intermediate_steps || [];\nconst toolNames = toolCalls.map(step => step.tool || 'unknown');\n\n// Multi-signal confidence estimation\nconst inputText = inputCtx.text || '';\nconst responseText = agent.output || '';\n\n// Signal 1: Tool usage (highest confidence)\nlet toolConfidence = 0;\nif (toolNames.length > 0 && !toolNames.includes('unknown')) {\n  toolConfidence = 100;\n} else if (toolNames.length === 0 && responseText.length > 50) {\n  toolConfidence = 60; // Direct response, medium confidence\n} else {\n  toolConfidence = 30; // No tool, short response\n}\n\n// Signal 2: Input clarity (keyword density)\nconst keywords = ['task', 'focus', 'money', 'paid', 'spent', 'system', 'status', 'health', 'server', 'help', 'what'];\nconst foundKeywords = keywords.filter(kw => inputText.toLowerCase().includes(kw));\nconst keywordConfidence = Math.min(foundKeywords.length * 25, 100);\n\n// Signal 3: Input length and structure\nconst lengthConfidence = inputText.length > 5 ? 70 : (inputText.length > 2 ? 40 : 10);\n\n// Signal 4: Response specificity (not a fallback message)\nconst isFallback = responseText.includes('I can help you with') || \n                   responseText.includes('What would be most useful');\nconst specificityConfidence = isFallback ? 20 : 80;\n\n// Weighted average\nconst confidenceScore = Math.round(\n  (toolConfidence * 0.4) + \n  (keywordConfidence * 0.25) + \n  (lengthConfidence * 0.15) + \n  (specificityConfidence * 0.2)\n);\n\n// Classify confidence level\nlet confidenceLevel = 'LOW';\nif (confidenceScore >= 70) confidenceLevel = 'HIGH';\nelse if (confidenceScore >= 40) confidenceLevel = 'MEDIUM';\n\n// Detect fallback triggers\nconst fallbackTriggers = [];\nif (inputText.length < 3 && !['hi', 'hey', 'yo'].includes(inputText.toLowerCase())) {\n  fallbackTriggers.push('too_short');\n}\nif (/^[^a-zA-Z0-9\\s]{3,}$/.test(inputText)) {\n  fallbackTriggers.push('emoji_only');\n}\nif (/^[a-z]{4,}$/i.test(inputText) && foundKeywords.length === 0) {\n  fallbackTriggers.push('random_characters');\n}\nif (foundKeywords.length === 0 && inputText.length > 5) {\n  fallbackTriggers.push('no_keywords');\n}\n\nconst logEntry = {\n  event: 'routing_decision',\n  timestamp,\n  executionId,\n  chat_id: inputCtx.chatId,\n  user: inputCtx.user,\n  // Routing decision\n  tools_called: toolNames,\n  tool_count: toolNames.length,\n  // Confidence signals\n  confidence_score: confidenceScore,\n  confidence_level: confidenceLevel,\n  signal_tool: toolConfidence,\n  signal_keywords: keywordConfidence,\n  signal_length: lengthConfidence,\n  signal_specificity: specificityConfidence,\n  // Input analysis\n  input_length: inputText.length,\n  keywords_found: foundKeywords,\n  fallback_triggers: fallbackTriggers,\n  is_fallback_response: isFallback,\n  // Response metadata\n  response_length: responseText.length,\n  // For PostgreSQL storage (prepared for routing_metrics table)\n  sql_ready: true\n};\n\nconsole.log('ROUTING_DECISION:', JSON.stringify(logEntry));\n\n// Pass through original agent output with confidence metadata\nreturn { \n  json: {\n    ...agent,\n    _confidence: {\n      score: confidenceScore,\n      level: confidenceLevel,\n      signals: {\n        tool: toolConfidence,\n        keywords: keywordConfidence,\n        length: lengthConfidence,\n        specificity: specificityConfidence\n      }\n    }\n  }\n};"
+      },
+      "id": "log-routing-decision",
+      "name": "Log Routing Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 520]
+    },
+    {
+      "parameters": {
         "jsCode": "const ctx = $('Parse Input').first().json;\nconst agent = $input.first().json;\n\n// Extract agent response\nlet response = agent.output || agent.text || 'Processing complete.';\n\n// Truncate if too long for Telegram (4096 char limit)\nif (response.length > 4000) {\n  response = response.substring(0, 3997) + '...';\n}\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    messageId: ctx.messageId,\n    text: response\n  }\n};"
       },
       "id": "format-output",
       "name": "Format Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1780, 520]
+      "position": [1900, 520]
     },
     {
       "parameters": {
@@ -209,7 +235,7 @@
       "name": "Log Outgoing Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1780, 520]
+      "position": [2120, 520]
     },
     {
       "parameters": {
@@ -223,7 +249,7 @@
       "name": "Send Response",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [2000, 520],
+      "position": [2340, 520],
       "credentials": {
         "telegramApi": {
           "id": "telegram-bot-main",
@@ -243,7 +269,7 @@
       "name": "Mark Complete",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
-      "position": [2220, 520],
+      "position": [2560, 520],
       "credentials": {
         "postgres": {
           "id": "cd-postgres-main",
@@ -286,7 +312,13 @@
     "Finance Manager Tool": {
       "ai_tool": [[{ "node": "Supervisor Agent", "type": "ai_tool", "index": 0 }]]
     },
+    "System Status Tool": {
+      "ai_tool": [[{ "node": "Supervisor Agent", "type": "ai_tool", "index": 0 }]]
+    },
     "Supervisor Agent": {
+      "main": [[{ "node": "Log Routing Decision", "type": "main", "index": 0 }]]
+    },
+    "Log Routing Decision": {
       "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]]
     },
     "Format Output": {
@@ -312,7 +344,12 @@
     { "name": "Dedup" }
   ],
   "meta": {
-    "notes": "Supervisor Agent v2: AI-driven tool selection with PostgreSQL message deduplication. Prevents duplicate processing during message bursts (SC-2.2, SC-2.4). Uses 13-message chat memory window. Tools: ADHD Commander, Finance Manager.",
-    "templateCredsSetupCompleted": true
+    "notes": "Supervisor Agent v3.0 (AI Routing Core): Enhanced AI-driven tool selection with natural language understanding. Features: (1) Intent-based routing with 70% confidence threshold, (2) Routing decision logging for analytics, (3) PostgreSQL message deduplication, (4) 13-message chat memory window. Tools connected: ADHD Commander, Finance Manager, System Status. Satisfies SC-3.1 through SC-3.4.",
+    "templateCredsSetupCompleted": true,
+    "toolInventory": {
+      "ADHD_Commander": "Task prioritization and focus guidance from Notion",
+      "Finance_Manager": "Transaction logging and financial tracking",
+      "System_Status": "Infrastructure health checks and system monitoring"
+    }
   }
 }
