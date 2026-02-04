@@ -1,0 +1,219 @@
+{
+  "id": "HW9ewdAgg86ww8hV",
+  "name": "Telegram Master Router",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": ["POST"],
+        "path": "telegram-bot",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [140, 400],
+      "webhookId": "telegram-nosecret",
+      "id": "30bbc215-7fd4-42e1-95d1-39ca1f19da84"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst data = raw.body || raw;\nconst msg = data.message || {};\nconst cb = data.callback_query || {};\nconst text = (msg.text || cb.data || '').toLowerCase().trim();\nconst chatId = msg.chat?.id || cb.message?.chat?.id || 0;\nconst user = msg.from?.username || cb.from?.username || 'User';\n\nlet route = 'unknown';\nif (text.startsWith('/focus')) route = 'focus';\nelse if (text.startsWith('/status')) route = 'status';\nelse if (text.startsWith('/help')) route = 'help';\nelse if (text.startsWith('/money')) route = 'money';\nelse if (text.startsWith('/intel')) route = 'intel';\n\nreturn { json: { text, chatId, user, route } };"
+      },
+      "name": "Parse & Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 400],
+      "id": "fe6c6722-4512-4cb4-bc64-935a0961e4e4"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "focus",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "focus", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "status", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "help",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "help", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "money",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "money", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "intel",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "intel", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "name": "Command Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [580, 400],
+      "id": "switch-main"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "LBIatPU7RFpT7QXX",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "name": "ADHD Commander",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [820, 160],
+      "id": "exec-adhd-commander",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '📊 *SYSTEM STATUS*\\n\\n✅ Master Router: Online\\n✅ ADHD Commander: Ready\\n✅ Ollama: Connected\\n✅ PostgreSQL: Active\\n\\n*Stable Gateway*\\n`/webhook/telegram-bot`\\n\\n*Commands:*\\n/focus /status /help\\n/money /intel (coming soon)', parse_mode: 'Markdown' } };"
+      },
+      "name": "Format Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 320],
+      "id": "format-status"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '📖 *COMMAND CENTER*\\n\\n*Active:*\\n/focus - AI task selector\\n/status - System health\\n/help - This message\\n\\n*Coming Soon:*\\n/money - Financial War Room\\n/intel - Security Intelligence\\n\\n_One router. Infinite missions._', parse_mode: 'Markdown' } };"
+      },
+      "name": "Format Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 480],
+      "id": "format-help"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '💰 *FINANCIAL WAR ROOM*\\n\\n_Coming soon..._\\n\\n• Gumroad revenue tracking\\n• Runway calculation\\n• Solvency alerts\\n• Burn rate monitoring', parse_mode: 'Markdown' } };"
+      },
+      "name": "Format Money",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 640],
+      "id": "format-money"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '🔍 *INTEL BRIEFING*\\n\\n_Coming soon..._\\n\\n• CVE monitoring\\n• Threat feeds\\n• Security news digest\\n• Scheduled reports', parse_mode: 'Markdown' } };"
+      },
+      "name": "Format Intel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 800],
+      "id": "format-intel"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '🤷 Unknown: `' + ctx.text.substring(0, 20) + '`\\n\\nTry /help for commands.', parse_mode: 'Markdown' } };"
+      },
+      "name": "Format Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 960],
+      "id": "format-unknown"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode }}"
+        }
+      },
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      },
+      "typeVersion": 4.2,
+      "position": [1100, 480],
+      "id": "send-telegram"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok",
+        "options": {}
+      },
+      "name": "OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1320, 480],
+      "id": "respond-ok"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Parse & Route", "type": "main", "index": 0 }]]
+    },
+    "Parse & Route": {
+      "main": [[{ "node": "Command Router", "type": "main", "index": 0 }]]
+    },
+    "Command Router": {
+      "main": [
+        [{ "node": "ADHD Commander", "type": "main", "index": 0 }],
+        [{ "node": "Format Status", "type": "main", "index": 0 }],
+        [{ "node": "Format Help", "type": "main", "index": 0 }],
+        [{ "node": "Format Money", "type": "main", "index": 0 }],
+        [{ "node": "Format Intel", "type": "main", "index": 0 }],
+        [{ "node": "Format Unknown", "type": "main", "index": 0 }]
+      ]
+    },
+    "ADHD Commander": {
+      "main": [[{ "node": "OK", "type": "main", "index": 0 }]]
+    },
+    "Format Status": {
+      "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]]
+    },
+    "Format Help": {
+      "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]]
+    },
+    "Format Money": {
+      "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]]
+    },
+    "Format Intel": {
+      "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]]
+    },
+    "Format Unknown": {
+      "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]]
+    },
+    "Send Telegram": {
+      "main": [[{ "node": "OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": [{ "name": "MasterRouter" }, { "name": "Stable" }],
+  "meta": {
+    "notes": "STABLE GATEWAY - Do not version. Add new commands via Switch node branches. Webhook: /webhook/telegram-bot"
+  }
+}
