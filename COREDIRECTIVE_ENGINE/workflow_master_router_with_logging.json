@@ -1,0 +1,230 @@
+{
+  "id": "HW9ewdAgg86ww8hV",
+  "name": "Telegram Master Router",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": ["POST"],
+        "path": "telegram-bot",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [144, 416],
+      "webhookId": "telegram-nosecret",
+      "id": "30bbc215-7fd4-42e1-95d1-39ca1f19da84"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO nuclear_event_log (raw_message, chat_id, command) VALUES ($1, $2, $3)",
+        "options": {
+          "queryParams": "={{ [$json.body?.message?.text || $json.message?.text || 'no-text', String($json.body?.message?.chat?.id || $json.message?.chat?.id || '0'), ($json.body?.message?.text || $json.message?.text || '').split(' ')[0]] }}"
+        }
+      },
+      "name": "Log Event",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [300, 416],
+      "id": "log-event-node",
+      "credentials": {
+        "postgres": {
+          "id": "postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst data = raw.body || raw;\nconst msg = data.message || {};\nconst cb = data.callback_query || {};\nconst text = (msg.text || cb.data || '').toLowerCase();\nconst chatId = msg.chat?.id || cb.message?.chat?.id || 0;\nconst user = msg.from?.username || cb.from?.username || 'User';\n\nlet route = 'unknown';\nif (text.startsWith('/focus')) route = 'focus';\nelse if (text.startsWith('/status')) route = 'status';\nelse if (text.startsWith('/help')) route = 'help';\n\nreturn { json: { text, chatId, user, route } };"
+      },
+      "name": "Parse & Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [448, 400],
+      "id": "fe6c6722-4512-4cb4-bc64-935a0961e4e4"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.route }}", "value2": "focus" }]
+        }
+      },
+      "name": "Is Focus?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [640, 304],
+      "id": "0752a44e-e690-4845-b80b-db03cd9ac541"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.route }}", "value2": "status" }]
+        }
+      },
+      "name": "Is Status?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [640, 512],
+      "id": "50780693-c70f-4c39-af60-549a88311a81"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.route }}", "value2": "help" }]
+        }
+      },
+      "name": "Is Help?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [640, 704],
+      "id": "c0ccd200-01aa-4c0d-8aad-a137272dc4a4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"Pick ONE task: Lab Report (tomorrow), Code Review (3 days). JSON: {\\\"task\\\":\\\"name\\\",\\\"reason\\\":\\\"why\\\",\\\"minutes\\\":45}\",\n  \"stream\": false,\n  \"options\": {\"temperature\": 0.3, \"num_predict\": 100}\n}",
+        "options": { "timeout": 120000 }
+      },
+      "name": "Ollama",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 208],
+      "id": "3455d3ea-5d69-4bf5-8b77-9119c4bf7f51"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ollama = $input.first().json;\nconst ctx = $('Parse & Route').first().json;\nlet task = {task:'Focus Task',reason:'Selected for you',minutes:45};\ntry{task=JSON.parse((ollama.response||'{}').replace(/```json?|```/g,'').trim());}catch(e){}\nreturn {json:{chat_id:ctx.chatId,text:`🎯 *COMMANDER*\\n*${task.task}*\\n⏱ ${task.minutes} min\\n_${task.reason}_`,parse_mode:'Markdown'}};"
+      },
+      "name": "Format Focus",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1104, 208],
+      "id": "f08235de-4296-4d10-9e70-0ad8a8a99d98"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn {json:{chat_id:ctx.chatId,text:'📊 *STATUS*\\n✅ System Online\\n✅ Ollama Ready',parse_mode:'Markdown'}};"
+      },
+      "name": "Format Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 464],
+      "id": "b93c5947-6631-48b1-9f15-07934fd2484e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn {json:{chat_id:ctx.chatId,text:'📖 *COMMANDS*\\n/focus - Get task\\n/status - Check system\\n/help - This message',parse_mode:'Markdown'}};"
+      },
+      "name": "Format Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 656],
+      "id": "9820c170-5229-4143-a51f-4dd192a9a88a"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn {json:{chat_id:ctx.chatId,text:'🤷 Unknown command. Try /help',parse_mode:'Markdown'}};"
+      },
+      "name": "Format Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 864],
+      "id": "8e5fd21c-fad6-4fb6-9372-64ea95db4fa5"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode }}"
+        }
+      },
+      "name": "Send",
+      "type": "n8n-nodes-base.telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      },
+      "typeVersion": 4.2,
+      "position": [1328, 512],
+      "id": "1d15fdde-74db-4392-a737-b8e84fd9f2ae"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok",
+        "options": {}
+      },
+      "name": "OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1520, 512],
+      "id": "650beee7-b5f5-42da-bd8f-579164c82176"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Log Event", "type": "main", "index": 0 }]]
+    },
+    "Log Event": {
+      "main": [[{ "node": "Parse & Route", "type": "main", "index": 0 }]]
+    },
+    "Parse & Route": {
+      "main": [[{ "node": "Is Focus?", "type": "main", "index": 0 }]]
+    },
+    "Is Focus?": {
+      "main": [
+        [{ "node": "Ollama", "type": "main", "index": 0 }],
+        [{ "node": "Is Status?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Status?": {
+      "main": [
+        [{ "node": "Format Status", "type": "main", "index": 0 }],
+        [{ "node": "Is Help?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Help?": {
+      "main": [
+        [{ "node": "Format Help", "type": "main", "index": 0 }],
+        [{ "node": "Format Unknown", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ollama": {
+      "main": [[{ "node": "Format Focus", "type": "main", "index": 0 }]]
+    },
+    "Format Focus": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Format Status": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Format Help": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Format Unknown": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Send": {
+      "main": [[{ "node": "OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
