@@ -67,13 +67,13 @@ Plans:
 3. **SC-2.3**: Webhook survives n8n restart (auto-registered on startup)
 4. **SC-2.4**: Message queue prevents duplicate processing of same message
 
-### Plans
-1. Create Telegram webhook trigger node in supervisor workflow
-2. Configure Cloudflare Tunnel endpoint for webhook
-3. Implement message queue with deduplication (message_id tracking)
-4. Add startup trigger to re-register webhook on n8n boot
-5. Test message ordering under load
-6. Add logging for all incoming messages
+**Plans:** 4 plans in 3 waves
+
+Plans:
+- [ ] 02-01-PLAN.md — Configure webhook trigger and startup registration (Wave 1)
+- [ ] 02-02-PLAN.md — Implement message deduplication via PostgreSQL (Wave 2)
+- [ ] 02-03-PLAN.md — Add comprehensive logging (Wave 2)
+- [ ] 02-04-PLAN.md — Integration testing and verification (Wave 3, checkpoint)
 
 ### Exit Gate
 - [ ] 10 consecutive test messages processed without loss
