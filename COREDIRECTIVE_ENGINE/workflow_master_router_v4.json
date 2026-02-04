@@ -1,0 +1,198 @@
+{
+  "name": "Master Router v4",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": ["POST"],
+        "path": "master-router-v4",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [140, 400],
+      "webhookId": "master-router-v4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst data = raw.body || raw;\nconst msg = data.message || {};\nconst cb = data.callback_query || {};\nconst text = (msg.text || cb.data || '').toLowerCase().trim();\nconst chatId = msg.chat?.id || cb.message?.chat?.id || 0;\nconst user = msg.from?.username || cb.from?.username || 'User';\n\nlet route = 'unknown';\nif (text.startsWith('/focus')) route = 'focus';\nelse if (text.startsWith('/status')) route = 'status';\nelse if (text.startsWith('/help')) route = 'help';\nelse if (text.startsWith('/warroom')) route = 'warroom';\n\nreturn { json: { text, chatId, user, route } };"
+      },
+      "id": "parse-route",
+      "name": "Parse & Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "focus",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "focus", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "status", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "help",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "help", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            },
+            {
+              "outputKey": "warroom",
+              "conditions": {
+                "conditions": [{ "leftValue": "={{ $json.route }}", "rightValue": "warroom", "operator": { "type": "string", "operation": "equals" } }]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "router",
+      "name": "Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [580, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "LBIatPU7RFpT7QXX",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "exec-commander",
+      "name": "Execute ADHD Commander",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [820, 200],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '📊 *STATUS*\\n\\n✅ Master Router: Online\\n✅ ADHD Commander: Ready\\n✅ Ollama: Connected\\n\\n*Version:* v4.0 (Modular)\\n\\n/focus - AI task selector\\n/status - This check\\n/help - Commands', parse_mode: 'Markdown' } };"
+      },
+      "id": "format-status",
+      "name": "Format Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '📖 *COMMANDER HELP*\\n\\n*Commands:*\\n/focus - Get AI-selected task\\n/status - System check\\n/help - This message\\n/warroom - Financial dashboard\\n\\n*How it works:*\\n1. /focus pulls your tasks\\n2. Ollama picks the highest-ROI one\\n3. You execute. No excuses.\\n\\n_Built for ADHD brains._', parse_mode: 'Markdown' } };"
+      },
+      "id": "format-help",
+      "name": "Format Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '💰 *WAR ROOM*\\n\\n_Coming soon..._\\n\\n• Gumroad revenue\\n• Runway calc\\n• Burn rate alerts', parse_mode: 'Markdown' } };"
+      },
+      "id": "format-warroom",
+      "name": "Format Warroom",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 720]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse & Route').first().json;\nreturn { json: { chat_id: ctx.chatId, text: '🤷 Unknown: ' + ctx.text.substring(0, 20) + '\\n\\nTry /help', parse_mode: 'Markdown' } };"
+      },
+      "id": "format-unknown",
+      "name": "Format Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 880]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode }}"
+        }
+      },
+      "id": "send-telegram",
+      "name": "Send",
+      "type": "n8n-nodes-base.telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      },
+      "typeVersion": 4.2,
+      "position": [1100, 560]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok",
+        "options": {}
+      },
+      "id": "respond-ok",
+      "name": "OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1320, 560]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Parse & Route", "type": "main", "index": 0 }]]
+    },
+    "Parse & Route": {
+      "main": [[{ "node": "Router", "type": "main", "index": 0 }]]
+    },
+    "Router": {
+      "main": [
+        [{ "node": "Execute ADHD Commander", "type": "main", "index": 0 }],
+        [{ "node": "Format Status", "type": "main", "index": 0 }],
+        [{ "node": "Format Help", "type": "main", "index": 0 }],
+        [{ "node": "Format Warroom", "type": "main", "index": 0 }],
+        [{ "node": "Format Unknown", "type": "main", "index": 0 }]
+      ]
+    },
+    "Execute ADHD Commander": {
+      "main": [[{ "node": "OK", "type": "main", "index": 0 }]]
+    },
+    "Format Status": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Format Help": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Format Warroom": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Format Unknown": {
+      "main": [[{ "node": "Send", "type": "main", "index": 0 }]]
+    },
+    "Send": {
+      "main": [[{ "node": "OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": [{ "name": "MasterRouter" }, { "name": "v4" }],
+  "meta": {
+    "notes": "Master Router v4 - Uses webhook + HTTP pattern. Routes /focus to ADHD Commander sub-workflow. Update ADHD_COMMANDER_ID after importing sub-workflow."
+  }
+}
