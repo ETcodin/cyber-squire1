@@ -73,37 +73,53 @@
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| ROUTE-01 | Phase 1 | Pending |
-| ROUTE-02 | Phase 1 | Pending |
-| ROUTE-03 | Phase 1 | Pending |
-| ROUTE-04 | Phase 1 | Pending |
-| ROUTE-05 | Phase 2 | Pending |
-| ROUTE-06 | Phase 1 | Pending |
-| ROUTE-07 | Phase 1 | Pending |
-| VOICE-01 | Phase 2 | Pending |
-| VOICE-02 | Phase 2 | Pending |
-| VOICE-03 | Phase 2 | Pending |
-| VOICE-04 | Phase 2 | Pending |
-| FORMAT-01 | Phase 1 | Pending |
-| FORMAT-02 | Phase 3 | Pending |
-| FORMAT-03 | Phase 3 | Pending |
-| FORMAT-04 | Phase 3 | Pending |
-| TOOL-01 | Phase 4 | Pending |
-| TOOL-02 | Phase 4 | Pending |
-| TOOL-03 | Phase 5 | Pending |
-| TOOL-04 | Phase 5 | Pending |
-| INFRA-01 | Phase 2 | Pending |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
-| INFRA-04 | Phase 1 | Pending |
+| Requirement | Phase | Success Criteria | Status |
+|-------------|-------|------------------|--------|
+| ROUTE-01 | Phase 2: Webhook & Message Intake | SC-2.1, SC-2.3 | Pending |
+| ROUTE-02 | Phase 3: AI Routing Core | SC-3.1, SC-3.2 | Pending |
+| ROUTE-03 | Phase 3: AI Routing Core | SC-3.1, SC-3.2, SC-3.3 | Pending |
+| ROUTE-04 | Phase 4: Memory & Context | SC-4.1, SC-4.2, SC-4.3 | Pending |
+| ROUTE-05 | Phase 5: Fallback & Resilience | SC-5.1, SC-5.2 | Pending |
+| ROUTE-06 | Phase 1: Infrastructure Foundation | SC-1.3 | Pending |
+| ROUTE-07 | Phase 2: Webhook & Message Intake | SC-2.2, SC-2.4 | Pending |
+| VOICE-01 | Phase 6: Voice Pipeline | SC-6.1 | Pending |
+| VOICE-02 | Phase 6: Voice Pipeline | SC-6.1, SC-6.5 | Pending |
+| VOICE-03 | Phase 6: Voice Pipeline | SC-6.2 | Pending |
+| VOICE-04 | Phase 6: Voice Pipeline | SC-6.3 | Pending |
+| FORMAT-01 | Phase 7: Output Formatting | SC-7.1, SC-7.2, SC-7.3 | Pending |
+| FORMAT-02 | Phase 8: Interactive UI | SC-8.1, SC-8.2 | Pending |
+| FORMAT-03 | Phase 8: Interactive UI | SC-8.3 | Pending |
+| FORMAT-04 | Phase 7: Output Formatting | SC-7.4 | Pending |
+| TOOL-01 | Phase 9: Core Tools | SC-9.1, SC-9.2 | Pending |
+| TOOL-02 | Phase 9: Core Tools | SC-9.3, SC-9.4 | Pending |
+| TOOL-03 | Phase 10: Extended Tools | SC-10.1, SC-10.2 | Pending |
+| TOOL-04 | Phase 10: Extended Tools | SC-10.3, SC-10.4, SC-10.5 | Pending |
+| INFRA-01 | Phase 6: Voice Pipeline | SC-6.5 | Pending |
+| INFRA-02 | Phase 1: Infrastructure Foundation | SC-1.1 | Pending |
+| INFRA-03 | Phase 1: Infrastructure Foundation | SC-1.2 | Pending |
+| INFRA-04 | Phase 1: Infrastructure Foundation | SC-1.4 | Pending |
 
 **Coverage:**
 - v1 requirements: 22 total
-- Mapped to phases: 22
-- Unmapped: 0 ✓
+- Mapped to phases: 22 (100%)
+- Success criteria defined: 34 total
+- Unmapped: 0
+
+**Phase Distribution:**
+| Phase | Requirements Count |
+|-------|-------------------|
+| Phase 1: Infrastructure Foundation | 4 |
+| Phase 2: Webhook & Message Intake | 2 |
+| Phase 3: AI Routing Core | 2 |
+| Phase 4: Memory & Context | 1 |
+| Phase 5: Fallback & Resilience | 1 |
+| Phase 6: Voice Pipeline | 5 |
+| Phase 7: Output Formatting | 2 |
+| Phase 8: Interactive UI | 2 |
+| Phase 9: Core Tools | 2 |
+| Phase 10: Extended Tools | 2 |
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 after initial definition*
+*Last updated: 2026-02-04 after roadmap creation*
+*See ROADMAP.md for detailed phase plans and success criteria*
