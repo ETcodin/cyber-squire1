@@ -1,7 +1,7 @@
 # State: Cyber-Squire Telegram Router
 
 **Current Phase:** 1 - Infrastructure Foundation
-**Phase Status:** Not Started
+**Phase Status:** In Progress
 **Last Updated:** 2026-02-04
 
 ---
@@ -14,7 +14,7 @@ Establish secure, stable infrastructure before any message handling
 ### Requirements in Scope
 | ID | Requirement | Status |
 |----|-------------|--------|
-| INFRA-02 | OLLAMA_KEEP_ALIVE=24h configured | Not Started |
+| INFRA-02 | OLLAMA_KEEP_ALIVE=24h configured | **COMPLETED** |
 | INFRA-03 | Error handler workflow with Telegram alerts | Not Started |
 | INFRA-04 | Daily webhook re-registration | Not Started |
 | ROUTE-06 | Credentials in n8n system (no hardcoding) | Not Started |
@@ -22,7 +22,7 @@ Establish secure, stable infrastructure before any message handling
 ### Success Criteria
 | ID | Criterion | Status |
 |----|-----------|--------|
-| SC-1.1 | Ollama responds after 30min idle (no cold start) | Not Tested |
+| SC-1.1 | Ollama responds after 30min idle (no cold start) | **READY** (deployed, needs testing) |
 | SC-1.2 | Error alert to Telegram within 60s | Not Tested |
 | SC-1.3 | Zero hardcoded credentials (grep passes) | Not Tested |
 | SC-1.4 | Webhook health check cron visible | Not Tested |
@@ -30,12 +30,12 @@ Establish secure, stable infrastructure before any message handling
 ### Plans
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 1 | Configure Ollama systemd with KEEP_ALIVE | Pending | |
-| 2 | Create error-handler workflow | Pending | |
-| 3 | Migrate credentials to n8n system | Pending | |
-| 4 | Audit workflows for hardcoded secrets | Pending | |
-| 5 | Create webhook health-check workflow | Pending | |
-| 6 | Validate Ollama memory stays resident | Pending | |
+| 01-01 | Configure Ollama KEEP_ALIVE=24h | **COMPLETED** | Deployed to EC2, verified running |
+| 01-02 | Create error-handler workflow | Pending | |
+| 01-03 | Migrate credentials to n8n system | Pending | |
+| 01-04 | Audit workflows for hardcoded secrets | Pending | |
+| 01-05 | Create webhook health-check workflow | Pending | |
+| 01-06 | Validate Ollama memory stays resident | Pending | |
 
 ### Blockers
 - None
@@ -68,9 +68,9 @@ Establish secure, stable infrastructure before any message handling
 ### v1 Requirements (22 total)
 
 **By Status:**
-- Completed: 0 (0%)
-- In Progress: 0 (0%)
-- Not Started: 22 (100%)
+- Completed: 1 (4.5%)
+- In Progress: 3 (13.6%)
+- Not Started: 18 (81.9%)
 
 **By Category:**
 | Category | Total | Complete |
@@ -79,13 +79,20 @@ Establish secure, stable infrastructure before any message handling
 | Voice | 4 | 0 |
 | Format | 4 | 0 |
 | Tools | 4 | 0 |
-| Infra | 4 | 0 |
+| Infra | 4 | 1 |
 
 ---
 
 ## Session Log
 
-### 2026-02-04
+### 2026-02-04 (Afternoon)
+- **Event:** Plan 01-01 COMPLETED
+- **Action:** Configured OLLAMA_KEEP_ALIVE=24h in docker-compose.yaml
+- **Deployed:** Updated EC2 instance, container restarted and verified
+- **Commit:** 29ee8eb
+- **Next:** Continue with remaining Phase 1 plans
+
+### 2026-02-04 (Morning)
 - **Event:** Roadmap created
 - **Action:** Defined 10 phases with 22 requirements mapped
 - **Next:** Begin Phase 1 infrastructure work
