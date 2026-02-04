@@ -39,13 +39,13 @@
 3. **SC-1.3**: Zero hardcoded credentials in any workflow JSON (grep validation passes)
 4. **SC-1.4**: Webhook health check scheduled cron job visible in n8n
 
-### Plans
-1. Configure Ollama systemd service with OLLAMA_KEEP_ALIVE=24h
-2. Create error-handler workflow (webhook trigger + Telegram notification)
-3. Migrate all credentials to n8n credential system
-4. Audit existing workflows for hardcoded secrets
-5. Create webhook health-check workflow (daily cron)
-6. Validate Ollama memory stays resident after idle
+**Plans:** 4 plans in 2 waves
+
+Plans:
+- [ ] 01-01-PLAN.md — Configure Ollama KEEP_ALIVE=24h in Docker (Wave 1)
+- [ ] 01-02-PLAN.md — Update error handler with credentials (Wave 1)
+- [ ] 01-03-PLAN.md — Create webhook health check cron (Wave 1)
+- [ ] 01-04-PLAN.md — Audit and migrate all hardcoded credentials (Wave 2)
 
 ### Exit Gate
 - [ ] All 4 success criteria pass
