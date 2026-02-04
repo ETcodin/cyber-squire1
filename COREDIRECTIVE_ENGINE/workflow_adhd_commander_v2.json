@@ -1,0 +1,91 @@
+{
+  "name": "ADHD Commander v2",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "execute-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get context from parent workflow\nconst ctx = $input.first().json;\n\n// Phase 1: Hardcoded sample tasks (replace with Notion later)\n// To enable Notion: uncomment the HTTP Request node and route here\nconst sampleTasks = [\n  { name: 'Lab Report - Security Analysis', priority: 'High', due: 'Tomorrow' },\n  { name: 'Code Review - PR #42', priority: 'Medium', due: '2 days' },\n  { name: 'Draft Project Proposal', priority: 'High', due: '3 days' },\n  { name: 'Update Documentation', priority: 'Low', due: 'Next week' },\n  { name: 'Fix Login Bug', priority: 'High', due: 'Today' }\n];\n\nconst taskList = sampleTasks.map((t, i) => \n  `${i + 1}. ${t.name} | Priority: ${t.priority} | Due: ${t.due}`\n).join('\\n');\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    user: ctx.user || 'User',\n    taskList: taskList,\n    taskCount: sampleTasks.length\n  }\n};"
+      },
+      "id": "prepare-tasks",
+      "name": "Prepare Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [320, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"You are an ADHD productivity commander. Cut through analysis paralysis.\\n\\nTime: {{ $now.format('HH:mm') }}, Day: {{ $now.format('EEEE') }}.\\n\\nTasks:\\n{{ $json.taskList }}\\n\\nRules:\\n1. Pick ONE task - highest ROI right now\\n2. Consider: urgency, priority, time of day\\n3. Morning = deep work, Afternoon = collab, Evening = light tasks\\n\\nJSON only (no markdown):\\n{\\\"task\\\": \\\"name\\\", \\\"why\\\": \\\"1 sentence\\\", \\\"minutes\\\": 45, \\\"fire\\\": \\\"motivational line\\\"}\",\n  \"stream\": false,\n  \"options\": { \"temperature\": 0.3, \"num_predict\": 200 }\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "ollama-selector",
+      "name": "Ollama Selector",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [540, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ollama = $input.first().json;\nconst ctx = $('Prepare Tasks').first().json;\n\nlet r = { task: 'Focus Task', why: 'Selected for you', minutes: 45, fire: 'Execute now!' };\ntry {\n  r = JSON.parse((ollama.response || '{}').replace(/```json?|```/g, '').trim());\n} catch (e) {}\n\nconst bar = '█░░░░░░░░░';\nconst msg = `🎯 *ADHD COMMANDER*\\n━━━━━━━━━━━━━━━━━━━━\\n\\n🚀 *MISSION DEPLOYED*\\n*${r.task}*\\n\\n⏱ Duration: ${r.minutes} min\\n📋 From ${ctx.taskCount} tasks\\n\\n💡 *AI Reasoning*\\n_${r.why}_\\n\\n━━━━━━━━━━━━━━━━━━━━\\n📈 ${bar}\\n━━━━━━━━━━━━━━━━━━━━\\n\\n🔥 _${r.fire}_\\n\\n@${ctx.user}`;\n\nreturn { json: { chat_id: ctx.chatId, text: msg, parse_mode: 'Markdown' } };"
+      },
+      "id": "format-mission",
+      "name": "Format Mission",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode }}"
+        }
+      },
+      "id": "send-telegram",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      },
+      "typeVersion": 4.2,
+      "position": [980, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Prepare Tasks", "type": "main", "index": 0 }]]
+    },
+    "Prepare Tasks": {
+      "main": [[{ "node": "Ollama Selector", "type": "main", "index": 0 }]]
+    },
+    "Ollama Selector": {
+      "main": [[{ "node": "Format Mission", "type": "main", "index": 0 }]]
+    },
+    "Format Mission": {
+      "main": [[{ "node": "Send Telegram", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [{ "name": "ADHD" }, { "name": "Commander" }],
+  "meta": {
+    "notes": "ADHD Commander v2 - Phase 1: Works with sample tasks. Phase 2: Add Notion HTTP Request node to pull real tasks."
+  }
+}
