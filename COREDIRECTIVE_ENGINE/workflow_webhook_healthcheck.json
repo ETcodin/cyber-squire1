@@ -1,0 +1,285 @@
+{
+  "name": "🔧 Telegram Webhook Health Check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "webhookId": "telegram-webhook-healthcheck"
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $credentials.accessToken }}/getWebhookInfo",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
+        "options": {}
+      },
+      "id": "get-webhook-info",
+      "name": "Get Webhook Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract webhook info from Telegram API response\nconst webhookData = $input.first().json;\nconst result = webhookData.result || {};\n\nconst currentUrl = result.url || '';\nconst expectedUrl = $env.TELEGRAM_WEBHOOK_URL || 'https://n8n.yourdomain.com/webhook/telegram';\nconst pendingUpdateCount = result.pending_update_count || 0;\nconst lastErrorDate = result.last_error_date || 0;\nconst lastErrorMessage = result.last_error_message || '';\n\n// Validate webhook status\nconst isConfigured = currentUrl.length > 0;\nconst isCorrectUrl = currentUrl === expectedUrl;\nconst hasErrors = lastErrorDate > 0;\nconst needsReregistration = !isConfigured || !isCorrectUrl || hasErrors;\n\nreturn [{\n  json: {\n    currentUrl,\n    expectedUrl,\n    isConfigured,\n    isCorrectUrl,\n    needsReregistration,\n    pendingUpdateCount,\n    lastErrorDate,\n    lastErrorMessage,\n    timestamp: new Date().toISOString(),\n    status: needsReregistration ? '🔴 NEEDS FIX' : '🟢 OK'\n  }\n}];"
+      },
+      "id": "validate-webhook",
+      "name": "Validate Webhook Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "needs-reregistration",
+              "leftValue": "={{ $json.needsReregistration }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "needs-fix",
+      "name": "Needs Re-registration?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $credentials.accessToken }}/setWebhook",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.expectedUrl }}"
+            },
+            {
+              "name": "max_connections",
+              "value": "40"
+            },
+            {
+              "name": "allowed_updates",
+              "value": "[\"message\",\"callback_query\"]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-webhook",
+      "name": "Re-register Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 180],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.telegram.org/bot{{ $credentials.accessToken }}/getWebhookInfo",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "telegramApi",
+        "options": {}
+      },
+      "id": "verify-webhook",
+      "name": "Verify Re-registration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 180],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format alert message for Telegram\nconst oldStatus = $('Validate Webhook Status').first().json;\nconst newStatus = $input.first().json.result || {};\n\nconst message = `🔧 **Telegram Webhook Re-registered**\n\n**Previous Status:**\n• URL: ${oldStatus.currentUrl || 'Not set'}\n• Status: ${oldStatus.status}\n• Pending Updates: ${oldStatus.pendingUpdateCount}\n${oldStatus.lastErrorMessage ? `• Last Error: ${oldStatus.lastErrorMessage}` : ''}\n\n**New Status:**\n• URL: ${newStatus.url}\n• Pending Updates: ${newStatus.pending_update_count || 0}\n• IP: ${newStatus.ip_address || 'N/A'}\n\n**Action Taken:** Webhook re-registered at ${new Date().toISOString()}\n\n✅ System should now be operational.`;\n\nreturn [{\n  json: {\n    chatId: $env.TELEGRAM_ADMIN_CHAT_ID || '',\n    message,\n    oldUrl: oldStatus.currentUrl,\n    newUrl: newStatus.url,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "format-alert",
+      "name": "Format Alert Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 180]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "disable_notification": false
+        }
+      },
+      "id": "send-alert",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1780, 180],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log successful health check (no action needed)\nconst status = $input.first().json;\n\nreturn [{\n  json: {\n    message: '✅ Webhook health check passed - no action needed',\n    currentUrl: status.currentUrl,\n    pendingUpdates: status.pendingUpdateCount,\n    timestamp: new Date().toISOString(),\n    status: 'HEALTHY'\n  }\n}];"
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 420]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Webhook Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Webhook Info": {
+      "main": [
+        [
+          {
+            "node": "Validate Webhook Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Webhook Status": {
+      "main": [
+        [
+          {
+            "node": "Needs Re-registration?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Re-registration?": {
+      "main": [
+        [
+          {
+            "node": "Re-register Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-register Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Re-registration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Re-registration": {
+      "main": [
+        [
+          {
+            "node": "Format Alert Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Alert Message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "CoreDirective",
+      "id": "cd-tag-001"
+    },
+    {
+      "name": "Telegram",
+      "id": "cd-tag-003"
+    },
+    {
+      "name": "Health Check",
+      "id": "cd-tag-002"
+    }
+  ],
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "coredirective-telegram-webhook-healthcheck"
+  }
+}
