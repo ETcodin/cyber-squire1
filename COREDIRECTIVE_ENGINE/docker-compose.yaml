@@ -60,6 +60,7 @@ services:
       - ./CD_VOL_OLLAMA:/root/.ollama:z
     environment:
       - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_KEEP_ALIVE=24h
     networks:
       - cd-net
 
