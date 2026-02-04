@@ -1,0 +1,160 @@
+{
+  "name": "Mission: Financial War Room",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "execute-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-ollama:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen2.5:7b\",\n  \"prompt\": \"Extract financial data from this message: {{ $json.text }}\\n\\nRules:\\n1. Type MUST be: Income or Expense\\n2. Category MUST be one of:\\n   - For Expenses: Infrastructure (AWS), Subscriptions (Motion/YT), Labor (Contractors), Marketing (Repost.io), Business Overhead, Debt Service\\n   - For Income: Field Nation, Notion Marketplace, Gumroad, YouTube/TikTok/FB, Main Employment, Cash Income\\n3. Extract the amount as a number (no $ sign)\\n4. Extract vendor/source name\\n\\nReturn ONLY valid JSON (no markdown):\\n{\\\"type\\\": \\\"Income or Expense\\\", \\\"category\\\": \\\"exact category\\\", \\\"amount\\\": 0.00, \\\"vendor\\\": \\\"name\\\"}\",\n  \"stream\": false,\n  \"options\": { \"temperature\": 0.2, \"num_predict\": 150 }\n}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "ollama-categorize",
+      "name": "Ollama Categorizer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ollama = $input.first().json;\nconst ctx = $('Execute Workflow Trigger').first().json;\n\nlet data = { type: 'Expense', category: 'Business Overhead', amount: 0, vendor: 'Unknown' };\ntry {\n  data = JSON.parse((ollama.response || '{}').replace(/```json?|```/g, '').trim());\n} catch (e) {\n  // Use defaults\n}\n\n// Validate category\nconst validExpenses = ['Infrastructure (AWS)', 'Subscriptions (Motion/YT)', 'Labor (Contractors)', 'Marketing (Repost.io)', 'Business Overhead', 'Debt Service'];\nconst validIncome = ['Field Nation', 'Notion Marketplace', 'Gumroad', 'YouTube/TikTok/FB', 'Main Employment', 'Cash Income'];\n\nif (data.type === 'Expense' && !validExpenses.includes(data.category)) {\n  data.category = 'Business Overhead';\n}\nif (data.type === 'Income' && !validIncome.includes(data.category)) {\n  data.category = 'Cash Income';\n}\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    user: ctx.user,\n    date: new Date().toISOString().split('T')[0],\n    type: data.type,\n    category: data.category,\n    vendor: data.vendor,\n    amount: Math.abs(parseFloat(data.amount) || 0)\n  }\n};"
+      },
+      "id": "parse-validate",
+      "name": "Parse & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [540, 300]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Ledger",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.date }}",
+            "Type": "={{ $json.type }}",
+            "Category": "={{ $json.category }}",
+            "Vendor/Source": "={{ $json.vendor }}",
+            "Amount": "={{ $json.amount }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "write-sheets",
+      "name": "Write to Ledger",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [760, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "rkzoOGxFJ9U5bdkD",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Ledger",
+          "mode": "list"
+        },
+        "options": {}
+      },
+      "id": "read-totals",
+      "name": "Read Ledger",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [980, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "rkzoOGxFJ9U5bdkD",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst ctx = $('Parse & Validate').first().json;\n\nlet totalIncome = 0;\nlet totalExpense = 0;\nlet debtPaid = 0;\n\nfor (const row of rows) {\n  const amount = parseFloat(row.json.Amount) || 0;\n  if (row.json.Type === 'Income') totalIncome += amount;\n  if (row.json.Type === 'Expense') totalExpense += amount;\n  if (row.json.Category === 'Debt Service') debtPaid += amount;\n}\n\nconst netFlow = totalIncome - totalExpense;\nconst debtRemaining = 60000 - debtPaid;\nconst flowEmoji = netFlow >= 0 ? '📈' : '📉';\n\nconst msg = `💰 *WAR ROOM UPDATED*\\n━━━━━━━━━━━━━━━━━━━━\\n\\n✅ *Logged:* ${ctx.type}\\n📂 *Category:* ${ctx.category}\\n🏢 *Vendor:* ${ctx.vendor}\\n💵 *Amount:* $${ctx.amount.toFixed(2)}\\n\\n━━━━━━━━━━━━━━━━━━━━\\n📊 *DASHBOARD*\\n\\n💚 Cash In: $${totalIncome.toFixed(2)}\\n🔴 Expenses: $${totalExpense.toFixed(2)}\\n${flowEmoji} Net Flow: $${netFlow.toFixed(2)}\\n\\n🎯 Debt Goal: $60,000\\n💳 Paid: $${debtPaid.toFixed(2)}\\n📍 Remaining: $${debtRemaining.toFixed(2)}\\n━━━━━━━━━━━━━━━━━━━━`;\n\nreturn { json: { chat_id: ctx.chatId, text: msg, parse_mode: 'Markdown' } };"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "parse_mode": "={{ $json.parse_mode }}"
+        }
+      },
+      "id": "send-telegram",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.telegram",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      },
+      "typeVersion": 4.2,
+      "position": [1420, 300]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Ollama Categorizer", "type": "main", "index": 0 }]]
+    },
+    "Ollama Categorizer": {
+      "main": [[{ "node": "Parse & Validate", "type": "main", "index": 0 }]]
+    },
+    "Parse & Validate": {
+      "main": [[{ "node": "Write to Ledger", "type": "main", "index": 0 }]]
+    },
+    "Write to Ledger": {
+      "main": [[{ "node": "Read Ledger", "type": "main", "index": 0 }]]
+    },
+    "Read Ledger": {
+      "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]]
+    },
+    "Format Response": {
+      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": [{ "name": "Finance" }, { "name": "WarRoom" }],
+  "meta": {
+    "notes": "Financial War Room: /money <description> → Ollama categorizes → Writes to Google Sheets Ledger → Returns dashboard summary. Requires YOUR_SHEET_ID to be replaced."
+  }
+}
