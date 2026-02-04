@@ -5,19 +5,28 @@
 - Telegram bot token (from credentials_vault.json or COREDIRECTIVE_ENGINE/.env)
 - Telegram chat ID: 7868965034
 
-## Step 1: Create Telegram Credential
+## Step 1: Create n8n Variable
 
 1. Access n8n UI: https://cyber-squire.tigouetheory.com
-2. Navigate to: Settings → Credentials → Add Credential
-3. Select: "Telegram API"
-4. Configure:
+2. Navigate to: Settings → Variables → Add Variable
+3. Configure:
+   - **Key**: TELEGRAM_CHAT_ID
+   - **Value**: 7868965034
+   - **Type**: String
+4. Click "Save"
+
+## Step 2: Create Telegram Credential
+
+1. Navigate to: Settings → Credentials → Add Credential
+2. Select: "Telegram API"
+3. Configure:
    - **Credential Name**: Telegram Bot
    - **Access Token**: [Use token from credentials vault]
    - **Base URL**: https://api.telegram.org (default)
-5. Click "Save"
-6. Note the credential ID (should be "telegram-bot-main")
+4. Click "Save"
+5. Note the credential ID (should be "telegram-bot-main")
 
-## Step 2: Import Error Handler Workflow
+## Step 3: Import Error Handler Workflow
 
 Option A - Via n8n UI:
 1. Navigate to: Workflows → Add Workflow → Import from File
@@ -31,7 +40,7 @@ docker cp /tmp/workflow_error_handler.json cd-service-n8n:/tmp/
 # Then import via UI
 ```
 
-## Step 3: Activate Error Handler
+## Step 4: Activate Error Handler
 
 1. Open the imported workflow: "System: Error Handler"
 2. Verify the credential reference in "Send Alert" node
@@ -40,7 +49,7 @@ docker cp /tmp/workflow_error_handler.json cd-service-n8n:/tmp/
 5. Set "Error Workflow": System: Error Handler
 6. Save settings
 
-## Step 4: Test Error Handler
+## Step 5: Test Error Handler
 
 Create a test workflow:
 ```json
@@ -76,6 +85,7 @@ Execute and verify Telegram alert is received.
 
 ## Verification Checklist
 
+- [ ] n8n variable TELEGRAM_CHAT_ID created with value 7868965034
 - [ ] Telegram credential created with ID "telegram-bot-main"
 - [ ] Error handler workflow imported and visible in workflow list
 - [ ] Error handler workflow activated (toggle is ON)
