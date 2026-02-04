@@ -1,64 +1,73 @@
 # GSD Session Handoff: Cyber-Squire Telegram Router
 
 **Session Date:** 2026-02-04
-**Paused At:** Phase 1 Complete, Phase 2 Ready
-**Context:** Full GSD project initialization + Phase 1 execution
+**Paused At:** Phase 2 Wave 3 (Integration Tests checkpoint)
+**Context:** Phase 1 complete, Phase 2 plans 01-03 executed
 
 ---
 
 ## Quick Resume Command
 
-```bash
-# After /clear, paste this to resume:
-Read the handoff file at /Users/et/cyber-squire-ops/.planning/HANDOFF.md and continue from where we left off. We're building the Cyber-Squire Telegram Router using GSD framework. Phase 1 is complete, Phase 2 is next.
 ```
-
----
-
-## Project Overview
-
-**What we're building:** Telegram-first AI command router using n8n + Ollama
-- Routes text/voice commands to specialized workflows
-- AI inference: Ollama (free) → Gemini (free) → manual Claude escalation
-- 4 conceptual agents: Overseer, Auditor, Growth Engine, Solvency Bot
-- ADHD-optimized outputs (bold, 3 bullets max, single next-step)
-
-**Financial Goals:**
-- $60K debt exit
-- $150K+ income
-- $10K/month business target
-
-**Infrastructure:**
-- EC2 t3.xlarge @ 54.234.155.244
-- n8n (Docker), PostgreSQL, Ollama (qwen2.5:7b)
-- Telegram bot: @Coredirective_bot
-- SSH: `ssh -i ~/cyber-squire-ops/cyber-squire-ops.pem ec2-user@54.234.155.244`
+Read /Users/et/cyber-squire-ops/.planning/HANDOFF.md and continue. Phase 2 needs manual test verification in n8n UI, then continue to phases 3-10.
+```
 
 ---
 
 ## Current State
 
-### Completed
-- [x] GSD project initialized (PROJECT.md, REQUIREMENTS.md, ROADMAP.md)
-- [x] Research completed (STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md)
-- [x] 10-phase roadmap with 22 requirements
-- [x] **Phase 1: Infrastructure Foundation** (4/4 plans)
-  - 01-01: Ollama KEEP_ALIVE=24h ✓
-  - 01-02: Error handler with n8n credentials ✓
-  - 01-03: Webhook health check cron ✓
-  - 01-04: Credential audit (8 files sanitized) ✓
+### Phase 1: Infrastructure Foundation ✓ COMPLETE
+- Ollama KEEP_ALIVE=24h configured
+- Error handler workflow with n8n credentials
+- Webhook health check cron
+- All 8 workflow files sanitized (zero hardcoded credentials)
 
-### Pending Manual Steps (n8n UI required)
-1. Activate error handler workflow in n8n
-2. Set as default error workflow in n8n settings
-3. Activate webhook health check workflow
-4. Create TELEGRAM_CHAT_ID variable in n8n
-5. Test error handler (trigger intentional error)
+### Phase 2: Webhook & Message Intake ◆ IN PROGRESS
+- **02-01 ✓** Telegram webhook trigger + startup registration workflow
+- **02-02 ✓** PostgreSQL message deduplication (ON CONFLICT pattern)
+- **02-03 ✓** Comprehensive logging with latency tracking
+- **02-04 ○** Integration tests (CHECKPOINT - requires manual verification)
 
-### Next Phase
-**Phase 2: Webhook & Message Intake**
-- ROUTE-01: Supervisor workflow receives all Telegram messages
-- ROUTE-07: Central queue handles single-message-at-a-time constraint
+---
+
+## Manual Steps Required Before Phase 3
+
+### 1. Import Workflows to n8n
+Access https://n8n.tigouetheory.com
+- Import `workflow_supervisor_agent.json`
+- Import `workflow_startup_webhook.json`
+- Activate both workflows
+
+### 2. Set Environment Variable
+Add to docker-compose.yml on EC2:
+```yaml
+TELEGRAM_WEBHOOK_URL=https://n8n.tigouetheory.com/webhook/supervisor-agent-v1
+```
+Then: `docker-compose restart cd-service-n8n`
+
+### 3. Create n8n Credential
+Create credential named `telegram-bot-main` with bot token
+
+### 4. Run Integration Tests
+1. Send test message to @Coredirective_bot
+2. Verify execution in n8n history
+3. Test 3-message burst (all processed)
+4. Restart n8n and verify webhook survives
+
+---
+
+## Remaining Phases (8 more)
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 3 | AI Routing Core | Ready after P2 |
+| 4 | Memory & Context | Ready after P3 |
+| 5 | Fallback & Resilience | Ready after P4 |
+| 6 | Voice Pipeline | Ready after P5 |
+| 7 | Output Formatting | Ready after P5 |
+| 8 | Interactive UI | Ready after P7 |
+| 9 | Core Tools | Ready after P8 |
+| 10 | Extended Tools | Ready after P9 |
 
 ---
 
@@ -66,77 +75,28 @@ Read the handoff file at /Users/et/cyber-squire-ops/.planning/HANDOFF.md and con
 
 | File | Purpose |
 |------|---------|
-| `.planning/PROJECT.md` | Project context and constraints |
-| `.planning/REQUIREMENTS.md` | 22 v1 requirements with traceability |
-| `.planning/ROADMAP.md` | 10-phase roadmap with success criteria |
-| `.planning/STATE.md` | Current execution state |
-| `.planning/config.json` | GSD settings (YOLO mode, comprehensive depth) |
-| `.planning/research/SUMMARY.md` | Research findings summary |
-| `.planning/phases/01-*/` | Phase 1 plans and summaries |
-| `GSD_MASTER_DIRECTIVE.md` | Master system directive (4 agents, workflows) |
+| `.planning/ROADMAP.md` | 10-phase roadmap |
+| `.planning/STATE.md` | Execution state |
+| `.planning/phases/02-*/` | Phase 2 plans and summaries |
+| `COREDIRECTIVE_ENGINE/workflow_supervisor_agent.json` | Main workflow |
 
 ---
 
-## Phase Roadmap Summary
+## Infrastructure
 
-| Phase | Name | Status | Requirements |
-|-------|------|--------|--------------|
-| 1 | Infrastructure Foundation | **COMPLETE** | INFRA-02,03,04 + ROUTE-06 |
-| 2 | Webhook & Message Intake | **NEXT** | ROUTE-01, ROUTE-07 |
-| 3 | AI Routing Core | Pending | ROUTE-02, ROUTE-03 |
-| 4 | Memory & Context | Pending | ROUTE-04 |
-| 5 | Fallback & Resilience | Pending | ROUTE-05 |
-| 6 | Voice Pipeline | Pending | VOICE-01-04, INFRA-01 |
-| 7 | Output Formatting | Pending | FORMAT-01, FORMAT-04 |
-| 8 | Interactive UI | Pending | FORMAT-02, FORMAT-03 |
-| 9 | Core Tools | Pending | TOOL-01, TOOL-02 |
-| 10 | Extended Tools | Pending | TOOL-03, TOOL-04 |
+- **EC2:** 54.234.155.244
+- **SSH:** `ssh -i ~/cyber-squire-ops/cyber-squire-ops.pem ec2-user@54.234.155.244`
+- **n8n:** https://n8n.tigouetheory.com
+- **Ollama:** qwen2.5:7b (KEEP_ALIVE=24h)
 
 ---
 
-## GSD Commands Reference
+## Resume Flow
 
-| Command | Purpose |
-|---------|---------|
-| `/gsd:progress` | Check current state and next action |
-| `/gsd:plan-phase 2` | Create plans for Phase 2 |
-| `/gsd:execute-phase 2` | Execute Phase 2 plans |
-| `/gsd:verify-work 1` | Manual acceptance testing |
-| `/gsd:pause-work` | Create context handoff (like this file) |
-| `/gsd:resume-work` | Resume from handoff |
+1. Complete manual steps above
+2. If tests pass: `/gsd:execute-phase 3`
+3. If tests fail: Document issues in `.planning/phases/02-webhook-message-intake/02-04-TEST-RESULTS.md`
 
 ---
 
-## User Preferences (from session)
-
-- **Mode:** YOLO (auto-approve, just execute)
-- **Depth:** Comprehensive (8-12 phases)
-- **AI Budget:** Ollama first, Gemini free tier, NO Claude API
-- **Model Profile:** Quality (Opus for research/roadmap)
-- **Workflow Agents:** Research ✓, Plan Check ✓, Verifier ✓
-- **Output Style:** No ADHD mentions unless relevant, direct communication
-
----
-
-## Credentials Status
-
-**CRITICAL - Rotate these (exposed in old repo history):**
-- Telegram Bot Token (was hardcoded, now in n8n credentials)
-- See CLAUDE.md for full rotation checklist
-
-**Sanitized in this session:**
-- 8 workflow JSON files (zero hardcoded tokens)
-- deploy_12wy.sh (uses env var now)
-
----
-
-## Resume Instructions
-
-1. Run `/clear` to reset context
-2. Paste the quick resume command above
-3. Or run `/gsd:resume-work` if available
-4. Continue with `/gsd:plan-phase 2` or `/gsd:execute-phase 2`
-
----
-
-*Last updated: 2026-02-04 after Phase 1 completion*
+*Last updated: 2026-02-04*
