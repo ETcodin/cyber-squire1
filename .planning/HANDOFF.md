@@ -1,84 +1,75 @@
 # GSD Session Handoff: Cyber-Squire Telegram Router
 
 **Session Date:** 2026-02-04
-**Paused At:** Phase 2 Wave 3 (Integration Tests checkpoint)
-**Context:** Phase 1 complete, Phase 2 plans 01-03 executed
+**Paused At:** Phase 3 executed, Phases 4-10 planned
+**Resume With:** Execute Phase 4
 
 ---
 
-## Quick Resume Command
+## Resume Command (Copy This Exactly)
 
 ```
-Read /Users/et/cyber-squire-ops/.planning/HANDOFF.md and continue. Phase 2 needs manual test verification in n8n UI, then continue to phases 3-10.
+I'm resuming Cyber-Squire development. Read .planning/STATE.md for current status.
+
+Server state:
+- Phases 1-3: EXECUTED on EC2 (54.234.155.244)
+- Phases 4-10: PLANNED locally, not yet deployed
+
+Next action: Execute Phase 4 (Memory & Context)
+- Plans are in .planning/phases/04-memory-context/
+- SQL schema: COREDIRECTIVE_ENGINE/sql/chat_memory_13window.sql
+- Deploy the chat_memory table and update workflow
+
+Skip re-planning. Go straight to execution.
 ```
 
 ---
 
-## Current State
+## What's On The Server (Phases 1-3)
 
-### Phase 1: Infrastructure Foundation ✓ COMPLETE
+### Phase 1: Infrastructure ✓
 - Ollama KEEP_ALIVE=24h configured
-- Error handler workflow with n8n credentials
-- Webhook health check cron
-- All 8 workflow files sanitized (zero hardcoded credentials)
+- Error handler workflow ready
+- Webhook health check cron ready
+- All credentials sanitized
 
-### Phase 2: Webhook & Message Intake ◆ IN PROGRESS
-- **02-01 ✓** Telegram webhook trigger + startup registration workflow
-- **02-02 ✓** PostgreSQL message deduplication (ON CONFLICT pattern)
-- **02-03 ✓** Comprehensive logging with latency tracking
-- **02-04 ○** Integration tests (CHECKPOINT - requires manual verification)
+### Phase 2: Webhook ✓
+- Telegram webhook trigger in workflow_supervisor_agent.json
+- Startup webhook registration workflow
+- PostgreSQL telegram_message_log table
+- Message deduplication with ON CONFLICT
 
----
-
-## Manual Steps Required Before Phase 3
-
-### 1. Import Workflows to n8n
-Access https://n8n.tigouetheory.com
-- Import `workflow_supervisor_agent.json`
-- Import `workflow_startup_webhook.json`
-- Activate both workflows
-
-### 2. Set Environment Variable
-Add to docker-compose.yml on EC2:
-```yaml
-TELEGRAM_WEBHOOK_URL=https://n8n.tigouetheory.com/webhook/supervisor-agent-v1
-```
-Then: `docker-compose restart cd-service-n8n`
-
-### 3. Create n8n Credential
-Create credential named `telegram-bot-main` with bot token
-
-### 4. Run Integration Tests
-1. Send test message to @Coredirective_bot
-2. Verify execution in n8n history
-3. Test 3-message burst (all processed)
-4. Restart n8n and verify webhook survives
+### Phase 3: AI Routing ✓
+- Enhanced AI Agent system prompt with routing rules
+- Tool schemas (System Status, ADHD Commander, Finance Manager)
+- Confidence threshold and fallback handling
+- Routing decision logging
 
 ---
 
-## Remaining Phases (8 more)
+## What's Planned Locally (Phases 4-10)
 
-| Phase | Name | Status |
-|-------|------|--------|
-| 3 | AI Routing Core | Ready after P2 |
-| 4 | Memory & Context | Ready after P3 |
-| 5 | Fallback & Resilience | Ready after P4 |
-| 6 | Voice Pipeline | Ready after P5 |
-| 7 | Output Formatting | Ready after P5 |
-| 8 | Interactive UI | Ready after P7 |
-| 9 | Core Tools | Ready after P8 |
-| 10 | Extended Tools | Ready after P9 |
+| Phase | Directory | Key Files |
+|-------|-----------|-----------|
+| 4 | `04-memory-context/` | PLAN.md, deploy.sh, test.sh |
+| 5 | `05-fallback-resilience/` | PLAN.md, 05_ai_failures.sql |
+| 6 | `06-voice-pipeline/` | 4 PLAN files |
+| 7 | `07-output-formatting/` | 2 PLAN files |
+| 8 | `08-interactive-ui/` | 3 PLAN files |
+| 9 | `09-core-tools/` | 2 PLAN files |
+| 10 | `10-extended-tools/` | 2 PLAN files |
 
 ---
 
-## Key Files
+## Manual Steps Before Resuming
 
-| File | Purpose |
-|------|---------|
-| `.planning/ROADMAP.md` | 10-phase roadmap |
-| `.planning/STATE.md` | Execution state |
-| `.planning/phases/02-*/` | Phase 2 plans and summaries |
-| `COREDIRECTIVE_ENGINE/workflow_supervisor_agent.json` | Main workflow |
+**n8n UI tasks (do these first):**
+1. Import `workflow_supervisor_agent.json`
+2. Import `workflow_startup_webhook.json`
+3. Create credential `telegram-bot-main`
+4. Add env var: `TELEGRAM_WEBHOOK_URL=https://n8n.tigouetheory.com/webhook/supervisor-agent-v1`
+5. Activate both workflows
+6. Send test message to @Coredirective_bot
 
 ---
 
@@ -86,17 +77,31 @@ Create credential named `telegram-bot-main` with bot token
 
 - **EC2:** 54.234.155.244
 - **SSH:** `ssh -i ~/cyber-squire-ops/cyber-squire-ops.pem ec2-user@54.234.155.244`
-- **n8n:** https://n8n.tigouetheory.com
+- **n8n:** https://n8n.tigouetheory.com (port 5678)
+- **PostgreSQL:** cd-service-db container, database: cd_automation_db
 - **Ollama:** qwen2.5:7b (KEEP_ALIVE=24h)
 
 ---
 
-## Resume Flow
+## Execution Order
 
-1. Complete manual steps above
-2. If tests pass: `/gsd:execute-phase 3`
-3. If tests fail: Document issues in `.planning/phases/02-webhook-message-intake/02-04-TEST-RESULTS.md`
+```
+Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 8 → Phase 9 → Phase 10
+```
+
+Each phase has:
+- `PLAN.md` — What to build
+- `deploy.sh` or SQL files — How to deploy
+- `test.sh` or TEST-CASES.md — How to verify
 
 ---
 
-*Last updated: 2026-02-04*
+## Git Status
+
+- **Local commits:** All phases planned and committed
+- **GitHub:** NOT pushed (user wants approval first)
+- **Push when ready:** `git push origin main`
+
+---
+
+*Last updated: 2026-02-04 (end of 1M token session)*
