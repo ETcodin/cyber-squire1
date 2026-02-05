@@ -90,7 +90,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract and normalize Telegram input for processing\nconst ctx = $('Extract Message ID').first().json;\nconst raw = ctx.raw;\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\nconst chatId = message.chat?.id || callbackMsg.chat?.id;\nconst text = (message.text || callback.data || '').trim();\nconst user = message.from?.username || callback.from?.username || 'User';\nconst firstName = message.from?.first_name || callback.from?.first_name || 'Friend';\nconst messageId = ctx.message_id;\n\nif (!chatId) {\n  throw new Error('Could not extract chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    chatId: String(chatId),\n    messageId: messageId,\n    text,\n    user,\n    firstName,\n    timestamp: new Date().toISOString()\n  }\n};"
+        "jsCode": "// Extract and normalize Telegram input for processing\n// Handles both text messages and voice notes\nconst ctx = $('Extract Message ID').first().json;\nconst raw = ctx.raw;\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\nconst chatId = message.chat?.id || callbackMsg.chat?.id;\nconst text = (message.text || callback.data || '').trim();\nconst user = message.from?.username || callback.from?.username || 'User';\nconst firstName = message.from?.first_name || callback.from?.first_name || 'Friend';\nconst messageId = ctx.message_id;\n\n// Voice detection\nconst voice = message.voice || null;\nconst isVoice = voice !== null;\n\nif (!chatId) {\n  throw new Error('Could not extract chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    chatId: String(chatId),\n    messageId: messageId,\n    text,\n    user,\n    firstName,\n    timestamp: new Date().toISOString(),\n    // Voice fields\n    isVoice,\n    voice: isVoice ? {\n      file_id: voice.file_id,\n      duration: voice.duration,\n      mime_type: voice.mime_type || 'audio/ogg'\n    } : null\n  }\n};"
       },
       "id": "parse-input",
       "name": "Parse Input",
@@ -100,13 +100,230 @@
     },
     {
       "parameters": {
-        "jsCode": "// Log incoming message for debugging and audit trail\nconst ctx = $input.first().json;\nconst executionId = $execution.id || 'N/A';\nconst timestamp = new Date().toISOString();\n\nconst logEntry = {\n  event: 'message_received',\n  timestamp,\n  chatId: ctx.chatId,\n  user: ctx.user,\n  messageLength: (ctx.text || '').length,\n  executionId,\n  messageId: ctx.messageId,\n  rawText: ctx.text?.substring(0, 100) // First 100 chars for privacy\n};\n\nconsole.log('SUPERVISOR_AGENT_INCOMING:', JSON.stringify(logEntry));\n\n// Pass through original data\nreturn { json: ctx };"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "voice-check",
+              "leftValue": "={{ $json.isVoice === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-voice",
+      "name": "Is Voice?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 520]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "Transcribing your voice note...",
+        "additionalFields": {}
+      },
+      "id": "voice-status",
+      "name": "Send Transcribing Status",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1560, 700],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/bot{{ $credentials.telegramApi.token }}/getFile?file_id={{ $('Parse Input').first().json.voice.file_id }}",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "get-voice-file",
+      "name": "Get Voice File Info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 700],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.telegram.org/file/bot{{ $credentials.telegramApi.token }}/{{ $json.result.file_path }}",
+        "authentication": "none",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "download-voice",
+      "name": "Download Voice File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 700],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://cd-service-whisper:8000/v1/audio/transcriptions",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "base"
+            },
+            {
+              "name": "language",
+              "value": "en"
+            },
+            {
+              "name": "response_format",
+              "value": "json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "transcribe-voice",
+      "name": "Transcribe Voice",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 700],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse transcription and prepare for AI routing\nconst whisperResponse = $input.first().json;\nconst inputCtx = $('Parse Input').first().json;\n\n// Check if transcription failed\nif (whisperResponse.error || !whisperResponse.text) {\n  console.log('TRANSCRIPTION_FAILED:', JSON.stringify({\n    error: whisperResponse.error || 'No text returned',\n    chatId: inputCtx.chatId\n  }));\n  \n  return {\n    json: {\n      chatId: inputCtx.chatId,\n      messageId: inputCtx.messageId,\n      text: '',\n      transcriptionFailed: true,\n      errorMessage: whisperResponse.error?.message || 'Transcription failed',\n      user: inputCtx.user,\n      firstName: inputCtx.firstName,\n      timestamp: inputCtx.timestamp,\n      isVoice: true,\n      duration: inputCtx.voice?.duration || 0\n    }\n  };\n}\n\nconst transcription = whisperResponse.text.trim();\n\nconsole.log('VOICE_TRANSCRIBED:', JSON.stringify({\n  chatId: inputCtx.chatId,\n  duration: inputCtx.voice?.duration || 0,\n  transcriptionLength: transcription.length\n}));\n\nreturn {\n  json: {\n    chatId: inputCtx.chatId,\n    messageId: inputCtx.messageId,\n    text: transcription,\n    transcriptionFailed: false,\n    user: inputCtx.user,\n    firstName: inputCtx.firstName,\n    timestamp: inputCtx.timestamp,\n    isVoice: true,\n    duration: inputCtx.voice?.duration || 0\n  }\n};"
+      },
+      "id": "parse-transcription",
+      "name": "Parse Transcription",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 700]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "transcription-failed",
+              "leftValue": "={{ $json.transcriptionFailed === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-transcription",
+      "name": "Transcription OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2660, 700]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "Sorry, I couldn't transcribe your voice note. Please try again or type your message.",
+        "additionalFields": {}
+      },
+      "id": "voice-error",
+      "name": "Send Transcription Error",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2880, 840],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=You said: \"{{ $json.text }}\"",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "echo-transcription",
+      "name": "Echo Transcription",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2880, 560],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log incoming message for debugging and audit trail\nconst ctx = $input.first().json;\nconst executionId = $execution.id || 'N/A';\nconst timestamp = new Date().toISOString();\n\nconst logEntry = {\n  event: 'message_received',\n  timestamp,\n  chatId: ctx.chatId,\n  user: ctx.user,\n  messageLength: (ctx.text || '').length,\n  executionId,\n  messageId: ctx.messageId,\n  isVoice: ctx.isVoice || false,\n  voiceDuration: ctx.duration || 0,\n  rawText: ctx.text?.substring(0, 100)\n};\n\nconsole.log('SUPERVISOR_AGENT_INCOMING:', JSON.stringify(logEntry));\n\n// Pass through original data\nreturn { json: ctx };"
       },
       "id": "log-incoming",
       "name": "Log Incoming Message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 360]
+      "position": [1560, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.first().json;\nconst startTime = Date.now();\n\nreturn {\n  json: {\n    ...inputData,\n    _execution: {\n      startTime,\n      provider: 'ollama',\n      attemptNumber: 1\n    }\n  }\n};"
+      },
+      "id": "ollama-wrapper",
+      "name": "Ollama Agent Wrapper",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 360]
     },
     {
       "parameters": {
@@ -119,7 +336,7 @@
       "name": "Chat Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1,
-      "position": [1560, 680],
+      "position": [2000, 160],
       "credentials": {
         "postgres": {
           "id": "cd-postgres-main",
@@ -130,14 +347,14 @@
     {
       "parameters": {
         "options": {
-          "systemMessage": "You are CYBER-SQUIRE, Emmanuel Tigoue's AI operations commander. You maintain Consultative Authority - you advise decisively, not passively.\n\n## CORE IDENTITY\n- User: Emmanuel (ET), Security Solutions Architect (CASP+, CCNA), Sickle Cell warrior\n- Framework: 12-Week Year (12WY) with ADHD-optimized execution\n- Energy: Finite and precious - every interaction must be high-ROI\n\n## RESPONSE FORMAT (ADHD-FRIENDLY)\n1. Lead with the answer - no preambles\n2. Use bullets and visual hierarchy\n3. Bold key actions: **Do this now**\n4. Keep responses under 200 words unless detail requested\n5. End with ONE clear next action\n\n## AVAILABLE TOOLS\nYou have access to specialized sub-workflows. Call them when appropriate:\n\n1. **ADHD_Commander** - When user needs:\n   - Focus task selection from Notion\n   - Help with analysis paralysis\n   - Keywords: focus, task, what should I do, priority, stuck\n\n2. **Finance_Manager** - When user mentions:\n   - Money, expenses, income, payments\n   - AWS costs, subscriptions, debt\n   - Keywords: paid, spent, earned, cost, bill, money\n\n3. **System_Status** - When user asks about:\n   - Infrastructure health, system status\n   - Service availability, resource usage\n   - Keywords: server, EC2, health, running, status\n\n## TOOL ROUTING EXAMPLES\n\n**System Status Tool:**\n- \"Check system health\" → System_Status\n- \"How is the server doing?\" → System_Status\n- \"Are all services running?\" → System_Status\n- \"What's the EC2 status?\" → System_Status\n- \"Is everything okay with the infrastructure?\" → System_Status\n- \"System status report\" → System_Status\n\n**ADHD Commander Tool:**\n- \"What should I work on?\" → ADHD_Commander\n- \"What's on my plate today?\" → ADHD_Commander\n- \"I'm stuck, what's the priority task?\" → ADHD_Commander\n- \"Give me a focus task\" → ADHD_Commander\n- \"Help me choose what to do\" → ADHD_Commander\n- \"I don't know where to start\" → ADHD_Commander\n\n**Finance Manager Tool:**\n- \"Log $50 for groceries\" → Finance_Manager\n- \"I paid rent today\" → Finance_Manager\n- \"Track AWS bill\" → Finance_Manager\n- \"What's my debt status?\" → Finance_Manager\n- \"I spent money on...\" → Finance_Manager\n- \"Record this expense\" → Finance_Manager\n\n**General Conversation (no tool call):**\n- \"Hello\" → Direct friendly response\n- \"Thanks for the help\" → Direct acknowledgment\n- \"How are you?\" → Direct conversational response\n- \"Tell me about...\" → Direct answer with context\n\n## ROUTING RULES\n1. **Match INTENT not keywords** - understand what the user is trying to accomplish\n2. **If 70%+ confident** → call the appropriate tool directly without asking\n3. **If <70% confident** → ask ONE clarifying question\n4. **If completely unclear** → respond with available capabilities\n5. **Never say \"I don't have that capability\"** - suggest the closest tool or provide helpful alternatives\n6. **For simple greetings/thanks** → respond directly, no tool needed\n7. **When in doubt** → call the tool; false positives are better than missed opportunities\n\n## FALLBACK HANDLING\nWhen user input is unclear, ambiguous, or nonsensical (gibberish), use this confidence-based approach:\n\n**HIGH CONFIDENCE (70%+)** - Clear intent detected:\n- Call the appropriate tool directly\n- Respond with decisive action\n- Example: \"Check system\" → System_Status (clear mapping)\n\n**MEDIUM CONFIDENCE (40-70%)** - Partial match:\n- Ask ONE clarifying question\n- Suggest the likely tool\n- Example: \"Things broken?\" → \"Do you want me to check system health, or is this about a specific task?\"\n\n**LOW CONFIDENCE (<40%)** - Gibberish/unclear:\n- DO NOT error or say \"I don't understand\"\n- Respond with helpful orientation:\n  * \"I can help you with: tasks (ADHD Commander), money tracking (Finance Manager), or system health (System Status). What would be most useful right now?\"\n- Keep response under 100 words\n- Maintain friendly, consultative tone\n\n**FALLBACK TRIGGERS:**\n- Random character strings (asdf, qwer, 123)\n- Emoji-only messages\n- Language not recognized as English\n- Zero keywords matching any tool\n- Message shorter than 3 characters (unless greeting)\n\n**NEVER:**\n- Apologize excessively\n- Use phrases like \"I'm confused\" or \"I don't have that capability\"\n- Offer more than 3 options at once (ADHD-friendly)\n- Generate walls of text for unclear input\n\n## CONSULTATIVE AUTHORITY\n- Don't ask \"would you like me to...\" - just do it\n- Provide recommendations, not options\n- Manage energy: \"This can wait until tomorrow\" is valid advice\n- Reference previous conversation context when relevant\n\n## SICKLE CELL AWARENESS\n- High pain days = reduce cognitive load\n- Suggest breaks and pacing when sessions are long\n- Never guilt-trip about productivity\n\nCurrent time context is provided in each message. Use it for time-aware recommendations."
+          "systemMessage": "You are CYBER-SQUIRE, Emmanuel Tigoue's AI operations commander. You maintain Consultative Authority - you advise decisively, not passively.\n\n## CORE IDENTITY\n- User: Emmanuel (ET), Security Solutions Architect (CASP+, CCNA), Sickle Cell warrior\n- Framework: 12-Week Year (12WY) with ADHD-optimized execution\n- Energy: Finite and precious - every interaction must be high-ROI\n\n## RESPONSE FORMAT (ADHD-FRIENDLY)\n1. Lead with the answer - no preambles\n2. Use bullets and visual hierarchy\n3. Bold key actions: **Do this now**\n4. Keep responses under 200 words unless detail requested\n5. End with ONE clear next action\n\n## AVAILABLE TOOLS\nYou have access to specialized sub-workflows. Call them when appropriate:\n\n1. **ADHD_Commander** - When user needs:\n   - Focus task selection from Notion\n   - Help with analysis paralysis\n   - Keywords: focus, task, what should I do, priority, stuck\n\n2. **Finance_Manager** - When user mentions:\n   - Money, expenses, income, payments\n   - AWS costs, subscriptions, debt\n   - Keywords: paid, spent, earned, cost, bill, money\n\n3. **System_Status** - When user asks about:\n   - Infrastructure health, system status\n   - Service availability, resource usage\n   - Keywords: server, EC2, health, running, status\n\n## ROUTING RULES\n1. **Match INTENT not keywords** - understand what the user is trying to accomplish\n2. **If 70%+ confident** → call the appropriate tool directly without asking\n3. **If <70% confident** → ask ONE clarifying question\n4. **For simple greetings/thanks** → respond directly, no tool needed\n5. **When in doubt** → call the tool; false positives are better than missed opportunities\n\n## CONSULTATIVE AUTHORITY\n- Don't ask \"would you like me to...\" - just do it\n- Provide recommendations, not options\n- Manage energy: \"This can wait until tomorrow\" is valid advice\n- Reference previous conversation context when relevant"
         }
       },
       "id": "ai-agent",
       "name": "Supervisor Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.6,
-      "position": [1560, 520]
+      "position": [2000, 360]
     },
     {
       "parameters": {
@@ -151,7 +368,7 @@
       "name": "Ollama Qwen",
       "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "typeVersion": 1,
-      "position": [1560, 300],
+      "position": [2200, 160],
       "credentials": {
         "ollamaApi": {
           "id": "Ym2DLXwZDPjfqjdg",
@@ -162,7 +379,7 @@
     {
       "parameters": {
         "name": "ADHD_Commander",
-        "description": "Call this tool when the user needs task prioritization, focus guidance, or help deciding what to work on. Use for queries about task selection, productivity, 'what should I do next', analysis paralysis, or requesting the highest-priority action. Examples: 'what's on my plate', 'give me a task', 'what should I focus on', 'I'm stuck'. Returns AI-selected task from Notion board with reasoning.",
+        "description": "Call this tool when the user needs task prioritization, focus guidance, or help deciding what to work on.",
         "workflowId": {
           "__rl": true,
           "value": "LBIatPU7RFpT7QXX",
@@ -173,12 +390,12 @@
       "name": "ADHD Commander Tool",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 1.1,
-      "position": [1400, 680]
+      "position": [1800, 160]
     },
     {
       "parameters": {
         "name": "Finance_Manager",
-        "description": "Call this tool for any financial tracking, transaction logging, or money-related queries. Use when user mentions expenses, income, payments, bills, subscriptions, debt status, or AWS costs. Examples: 'log $50 for groceries', 'paid rent', 'what's my debt status', 'track AWS bill'. Automatically categorizes and logs transactions to ledger.",
+        "description": "Call this tool for any financial tracking, transaction logging, or money-related queries.",
         "workflowId": {
           "__rl": true,
           "value": "98C69UAeJH3pFdhC",
@@ -189,12 +406,12 @@
       "name": "Finance Manager Tool",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 1.1,
-      "position": [1720, 680]
+      "position": [2400, 160]
     },
     {
       "parameters": {
         "name": "System_Status",
-        "description": "Call this tool when the user wants to check infrastructure health, system status, or service availability. Use for queries about EC2, Docker containers, n8n, Ollama, PostgreSQL, disk space, memory usage, or general 'is everything running?' questions. Examples: 'check system health', 'how is the server', 'are all services up', 'system status report'. Returns formatted health check with container status and resource usage.",
+        "description": "Call this tool when the user wants to check infrastructure health or system status.",
         "workflowId": {
           "__rl": true,
           "value": "SYSTEM_STATUS_WORKFLOW_ID",
@@ -205,51 +422,159 @@
       "name": "System Status Tool",
       "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "typeVersion": 1.1,
-      "position": [1240, 680]
+      "position": [1600, 160]
     },
     {
       "parameters": {
-        "jsCode": "// Enhanced routing decision logging with multi-signal confidence estimation\nconst agent = $input.first().json;\nconst inputCtx = $('Parse Input').first().json;\nconst timestamp = new Date().toISOString();\nconst executionId = $execution.id || 'N/A';\n\n// Extract tool calls if any\nconst toolCalls = agent.intermediate_steps || [];\nconst toolNames = toolCalls.map(step => step.tool || 'unknown');\n\n// Multi-signal confidence estimation\nconst inputText = inputCtx.text || '';\nconst responseText = agent.output || '';\n\n// Signal 1: Tool usage (highest confidence)\nlet toolConfidence = 0;\nif (toolNames.length > 0 && !toolNames.includes('unknown')) {\n  toolConfidence = 100;\n} else if (toolNames.length === 0 && responseText.length > 50) {\n  toolConfidence = 60; // Direct response, medium confidence\n} else {\n  toolConfidence = 30; // No tool, short response\n}\n\n// Signal 2: Input clarity (keyword density)\nconst keywords = ['task', 'focus', 'money', 'paid', 'spent', 'system', 'status', 'health', 'server', 'help', 'what'];\nconst foundKeywords = keywords.filter(kw => inputText.toLowerCase().includes(kw));\nconst keywordConfidence = Math.min(foundKeywords.length * 25, 100);\n\n// Signal 3: Input length and structure\nconst lengthConfidence = inputText.length > 5 ? 70 : (inputText.length > 2 ? 40 : 10);\n\n// Signal 4: Response specificity (not a fallback message)\nconst isFallback = responseText.includes('I can help you with') || \n                   responseText.includes('What would be most useful');\nconst specificityConfidence = isFallback ? 20 : 80;\n\n// Weighted average\nconst confidenceScore = Math.round(\n  (toolConfidence * 0.4) + \n  (keywordConfidence * 0.25) + \n  (lengthConfidence * 0.15) + \n  (specificityConfidence * 0.2)\n);\n\n// Classify confidence level\nlet confidenceLevel = 'LOW';\nif (confidenceScore >= 70) confidenceLevel = 'HIGH';\nelse if (confidenceScore >= 40) confidenceLevel = 'MEDIUM';\n\n// Detect fallback triggers\nconst fallbackTriggers = [];\nif (inputText.length < 3 && !['hi', 'hey', 'yo'].includes(inputText.toLowerCase())) {\n  fallbackTriggers.push('too_short');\n}\nif (/^[^a-zA-Z0-9\\s]{3,}$/.test(inputText)) {\n  fallbackTriggers.push('emoji_only');\n}\nif (/^[a-z]{4,}$/i.test(inputText) && foundKeywords.length === 0) {\n  fallbackTriggers.push('random_characters');\n}\nif (foundKeywords.length === 0 && inputText.length > 5) {\n  fallbackTriggers.push('no_keywords');\n}\n\nconst logEntry = {\n  event: 'routing_decision',\n  timestamp,\n  executionId,\n  chat_id: inputCtx.chatId,\n  user: inputCtx.user,\n  // Routing decision\n  tools_called: toolNames,\n  tool_count: toolNames.length,\n  // Confidence signals\n  confidence_score: confidenceScore,\n  confidence_level: confidenceLevel,\n  signal_tool: toolConfidence,\n  signal_keywords: keywordConfidence,\n  signal_length: lengthConfidence,\n  signal_specificity: specificityConfidence,\n  // Input analysis\n  input_length: inputText.length,\n  keywords_found: foundKeywords,\n  fallback_triggers: fallbackTriggers,\n  is_fallback_response: isFallback,\n  // Response metadata\n  response_length: responseText.length,\n  // For PostgreSQL storage (prepared for routing_metrics table)\n  sql_ready: true\n};\n\nconsole.log('ROUTING_DECISION:', JSON.stringify(logEntry));\n\n// Pass through original agent output with confidence metadata\nreturn { \n  json: {\n    ...agent,\n    _confidence: {\n      score: confidenceScore,\n      level: confidenceLevel,\n      signals: {\n        tool: toolConfidence,\n        keywords: keywordConfidence,\n        length: lengthConfidence,\n        specificity: specificityConfidence\n      }\n    }\n  }\n};"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "output-exists",
+              "leftValue": "={{ $json.output !== undefined && $json.output !== null && $json.output !== '' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-success",
+      "name": "Check Agent Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputCtx = $('Log Incoming Message').first().json;\n\nconst systemPrompt = `You are CYBER-SQUIRE, Emmanuel's AI operations commander.\n\n## RESPONSE FORMAT (ADHD-FRIENDLY)\n1. Lead with the answer\n2. Use bullets and visual hierarchy\n3. Bold key actions\n4. Keep under 200 words\n5. End with ONE clear next action\n\nRespond to the user's message below.`;\n\nconst fullPrompt = `${systemPrompt}\\n\\nUser: ${inputCtx.text}\\n\\nRespond as CYBER-SQUIRE.`;\n\nreturn {\n  json: {\n    prompt: fullPrompt,\n    chatId: inputCtx.chatId,\n    messageId: inputCtx.messageId,\n    originalInput: inputCtx.text,\n    _execution: {\n      startTime: $('Ollama Agent Wrapper').first().json._execution.startTime,\n      provider: 'gemini',\n      attemptNumber: 2,\n      fallbackReason: 'ollama_failure'\n    }\n  }\n};"
+      },
+      "id": "prepare-gemini",
+      "name": "Prepare Gemini Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2340, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{ $env.GEMINI_API_KEY }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [{ parts: [{ text: $json.prompt }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 512, topP: 0.95 } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "call-gemini",
+      "name": "Call Gemini API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2560, 500],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResponse = $input.first().json;\nconst executionMeta = $('Prepare Gemini Fallback').first().json._execution;\n\nif (geminiResponse.error || !geminiResponse.candidates) {\n  throw new Error('Gemini API call failed: ' + (geminiResponse.error?.message || 'No candidates returned'));\n}\n\nconst responseText = geminiResponse.candidates?.[0]?.content?.parts?.[0]?.text || \n                     \"I apologize, but I'm having trouble processing your request.\";\n\nconst endTime = Date.now();\nconst latencyMs = endTime - executionMeta.startTime;\n\nconst markedResponse = responseText + \"\\n\\n_via Gemini fallback_\";\n\nreturn {\n  json: {\n    output: markedResponse,\n    intermediate_steps: [],\n    _metadata: {\n      provider: 'gemini',\n      model: 'gemini-2.0-flash',\n      latencyMs,\n      fallback: true\n    },\n    _execution: executionMeta\n  }\n};"
+      },
+      "id": "parse-gemini",
+      "name": "Parse Gemini Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2780, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst inputCtx = $('Log Incoming Message').first().json;\nconst timestamp = new Date().toISOString();\n\nconsole.log('AI_FALLBACK:', JSON.stringify({\n  event: 'ai_fallback_triggered',\n  timestamp,\n  chat_id: inputCtx.chatId,\n  provider: 'gemini',\n  latencyMs: response._metadata.latencyMs\n}));\n\nreturn {\n  json: {\n    ...response,\n    _escalation: {\n      needed: false,\n      failureCount: 1\n    }\n  }\n};"
+      },
+      "id": "log-fallback",
+      "name": "Log Fallback Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3000, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputCtx = $('Log Incoming Message').first().json;\nconst error = $input.first().json.error?.message || 'Unknown error';\n\nconsole.log('GEMINI_FALLBACK_FAILED:', JSON.stringify({\n  timestamp: new Date().toISOString(),\n  chat_id: inputCtx.chatId,\n  error\n}));\n\nconst isQuotaError = error.includes('429') || error.toLowerCase().includes('quota');\n\nconst fallbackMessage = isQuotaError\n  ? \"AI capacity temporarily limited. Please try again later.\"\n  : \"AI systems experiencing temporary issues. Please try again.\";\n\nreturn {\n  json: {\n    output: fallbackMessage,\n    intermediate_steps: [],\n    _metadata: {\n      provider: 'none',\n      fallback: true,\n      complete_failure: true\n    }\n  }\n};"
+      },
+      "id": "handle-gemini-failure",
+      "name": "Handle Gemini Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2780, 640]
+    },
+    {
+      "parameters": {
+        "mode": "chooseBranch",
+        "output": "empty"
+      },
+      "id": "merge-paths",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [3220, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const agent = $input.first().json;\nconst inputCtx = $('Log Incoming Message').first().json;\nconst timestamp = new Date().toISOString();\nconst executionId = $execution.id || 'N/A';\n\nconst toolCalls = agent.intermediate_steps || [];\nconst toolNames = toolCalls.map(step => step.tool || 'unknown');\n\nconst inputText = inputCtx.text || '';\nconst responseText = agent.output || '';\n\nlet toolConfidence = toolNames.length > 0 ? 100 : (responseText.length > 50 ? 60 : 30);\nconst provider = agent._metadata?.provider || 'ollama';\n\nconsole.log('ROUTING_DECISION:', JSON.stringify({\n  event: 'routing_decision',\n  timestamp,\n  executionId,\n  chat_id: inputCtx.chatId,\n  tools_called: toolNames,\n  provider,\n  fallback: agent._metadata?.fallback || false,\n  isVoice: inputCtx.isVoice || false,\n  input_length: inputText.length,\n  response_length: responseText.length\n}));\n\nreturn { json: agent };"
       },
       "id": "log-routing-decision",
       "name": "Log Routing Decision",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1680, 520]
+      "position": [3440, 400]
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $('Parse Input').first().json;\nconst agent = $input.first().json;\n\n// Extract agent response\nlet response = agent.output || agent.text || 'Processing complete.';\n\n// Truncate if too long for Telegram (4096 char limit)\nif (response.length > 4000) {\n  response = response.substring(0, 3997) + '...';\n}\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    messageId: ctx.messageId,\n    text: response\n  }\n};"
+        "jsCode": "// Phase 7: ADHD-Optimized Output Formatting\n// Transforms AI responses for maximum ADHD readability\nconst ctx = $('Log Incoming Message').first().json;\nconst agent = $input.first().json;\n\nlet response = agent.output || agent.text || 'Processing complete.';\n\n// === ADHD FORMATTING FUNCTIONS ===\n\n// 1. Bold Keywords: Highlight important terms for scanning\nfunction boldKeywords(text) {\n  // Status words (case-insensitive)\n  const statusWords = ['healthy', 'running', 'ready', 'complete', 'completed', 'success', 'successful',\n    'failed', 'error', 'warning', 'critical', 'down', 'offline', 'online', 'active', 'inactive',\n    'enabled', 'disabled', 'started', 'stopped', 'pending', 'processing'];\n  \n  // Action verbs (imperative)\n  const actionVerbs = ['run', 'check', 'update', 'create', 'delete', 'restart', 'deploy',\n    'configure', 'install', 'verify', 'test', 'fix', 'review', 'confirm', 'submit', 'send'];\n  \n  // Numbers with units (16GB, 45%, 2.3s, etc.)\n  text = text.replace(/(\\d+(?:\\.\\d+)?\\s*(?:GB|MB|KB|TB|ms|s|%|min|hour|day|week)s?)/gi, '**$1**');\n  \n  // Status words\n  statusWords.forEach(word => {\n    const regex = new RegExp(`\\\\b(${word})\\\\b`, 'gi');\n    text = text.replace(regex, '**$1**');\n  });\n  \n  // Don't double-bold (clean up **word** → **word**)\n  text = text.replace(/\\*\\*\\*\\*([^*]+)\\*\\*\\*\\*/g, '**$1**');\n  \n  return text;\n}\n\n// 2. Truncate Bullet Lists: Max 3 items visible\nfunction truncateBullets(text) {\n  const lines = text.split('\\n');\n  const result = [];\n  let bulletCount = 0;\n  let inBulletList = false;\n  let hiddenCount = 0;\n  \n  for (let i = 0; i < lines.length; i++) {\n    const line = lines[i];\n    const isBullet = /^[\\s]*[-•*]\\s/.test(line) || /^[\\s]*\\d+\\.\\s/.test(line);\n    \n    if (isBullet) {\n      inBulletList = true;\n      bulletCount++;\n      \n      if (bulletCount <= 3) {\n        // Add emoji prefix for visual hierarchy\n        let formattedLine = line;\n        if (line.toLowerCase().includes('healthy') || line.toLowerCase().includes('success') || line.toLowerCase().includes('complete')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1✅ ');\n        } else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed') || line.toLowerCase().includes('down')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1❌ ');\n        } else if (line.toLowerCase().includes('warning') || line.toLowerCase().includes('attention')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1⚠️ ');\n        }\n        result.push(formattedLine);\n      } else {\n        hiddenCount++;\n      }\n    } else {\n      // Not a bullet - if we were in a list and have hidden items, add summary\n      if (inBulletList && hiddenCount > 0) {\n        result.push(`... and ${hiddenCount} more`);\n        hiddenCount = 0;\n        bulletCount = 0;\n      }\n      inBulletList = false;\n      bulletCount = 0;\n      result.push(line);\n    }\n  }\n  \n  // Handle end of text with hidden bullets\n  if (hiddenCount > 0) {\n    result.push(`... and ${hiddenCount} more`);\n  }\n  \n  return result.join('\\n');\n}\n\n// 3. Extract Next Step: Find and format action item\nfunction extractNextStep(text) {\n  // Look for existing \"next step\" or action indicators\n  if (text.toLowerCase().includes('next step:')) {\n    return text; // Already has next step\n  }\n  \n  // Look for action phrases\n  const actionPatterns = [\n    /you should ([^.!?]+)/i,\n    /please ([^.!?]+)/i,\n    /try ([^.!?]+)/i,\n    /run ([^.!?]+)/i,\n    /check ([^.!?]+)/i\n  ];\n  \n  for (const pattern of actionPatterns) {\n    const match = text.match(pattern);\n    if (match && match[1]) {\n      const action = match[1].trim();\n      // Capitalize first letter\n      const capitalizedAction = action.charAt(0).toUpperCase() + action.slice(1);\n      return text + '\\n\\n**Next step:** ' + capitalizedAction;\n    }\n  }\n  \n  return text;\n}\n\n// 4. TL;DR for Long Responses (>300 chars)\nfunction addTldr(text) {\n  const THRESHOLD = 300;\n  const MAX_TLDR = 100;\n  \n  if (text.length <= THRESHOLD) {\n    return text; // Short enough, no TL;DR needed\n  }\n  \n  // Generate simple TL;DR from first sentence or key info\n  let tldr = '';\n  \n  // Try to extract first meaningful sentence\n  const firstSentence = text.match(/^[^.!?]+[.!?]/)?.[0] || '';\n  \n  if (firstSentence && firstSentence.length <= MAX_TLDR) {\n    tldr = firstSentence.trim();\n  } else {\n    // Truncate intelligently\n    tldr = text.substring(0, MAX_TLDR - 3).trim();\n    // Cut at last space to avoid word breaks\n    const lastSpace = tldr.lastIndexOf(' ');\n    if (lastSpace > 50) {\n      tldr = tldr.substring(0, lastSpace);\n    }\n    tldr += '...';\n  }\n  \n  // Format with spoiler for details\n  // Note: Telegram spoiler uses ||text|| syntax\n  return `**TL;DR:** ${tldr}\\n\\n_(Tap gray box for details)_\\n\\n||${text}||`;\n}\n\n// === APPLY FORMATTING ===\n\n// Step 1: Bold keywords first (before other formatting)\nresponse = boldKeywords(response);\n\n// Step 2: Truncate bullet lists\nresponse = truncateBullets(response);\n\n// Step 3: Add next step for actionable responses\nresponse = extractNextStep(response);\n\n// Step 4: Add TL;DR for long responses\nresponse = addTldr(response);\n\n// Final safety: Telegram max is 4096 chars\nif (response.length > 4000) {\n  response = response.substring(0, 3997) + '...';\n}\n\nconsole.log('ADHD_FORMAT:', JSON.stringify({\n  originalLength: (agent.output || '').length,\n  formattedLength: response.length,\n  hasTldr: response.includes('TL;DR'),\n  hasBullets: response.includes('... and'),\n  hasNextStep: response.includes('Next step:')\n}));\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    messageId: ctx.messageId,\n    text: response\n  }\n};"
       },
       "id": "format-output",
-      "name": "Format Output",
+      "name": "Format Output (ADHD)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1900, 520]
+      "position": [3660, 400]
     },
     {
       "parameters": {
-        "jsCode": "// Log outgoing response for debugging and audit trail\nconst startTime = $('Log Incoming Message').first().json.timestamp;\nconst response = $input.first().json;\nconst timestamp = new Date().toISOString();\nconst executionId = $execution.id || 'N/A';\n\n// Calculate latency\nconst latencyMs = startTime \n  ? new Date(timestamp).getTime() - new Date(startTime).getTime() \n  : null;\n\nconst logEntry = {\n  event: 'message_sent',\n  timestamp,\n  chatId: response.chatId,\n  responseLength: (response.text || '').length,\n  latencyMs,\n  executionId,\n  messageId: response.messageId\n};\n\nconsole.log('SUPERVISOR_AGENT_OUTGOING:', JSON.stringify(logEntry));\n\n// Pass through response data\nreturn { json: response };"
+        "jsCode": "const startTime = $('Log Incoming Message').first().json.timestamp;\nconst response = $input.first().json;\nconst timestamp = new Date().toISOString();\nconst executionId = $execution.id || 'N/A';\n\nconst latencyMs = startTime \n  ? new Date(timestamp).getTime() - new Date(startTime).getTime() \n  : null;\n\nconsole.log('SUPERVISOR_AGENT_OUTGOING:', JSON.stringify({\n  event: 'message_sent',\n  timestamp,\n  chatId: response.chatId,\n  responseLength: (response.text || '').length,\n  latencyMs,\n  executionId,\n  messageId: response.messageId\n}));\n\nreturn { json: response };"
       },
       "id": "log-outgoing",
       "name": "Log Outgoing Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2120, 520]
+      "position": [3880, 400]
     },
     {
       "parameters": {
         "chatId": "={{ $json.chatId }}",
         "text": "={{ $json.text }}",
         "additionalFields": {
-          "parse_mode": "Markdown"
+          "parse_mode": "MarkdownV2"
         }
       },
       "id": "send-response",
       "name": "Send Response",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [2340, 520],
+      "position": [4100, 400],
       "credentials": {
         "telegramApi": {
           "id": "telegram-bot-main",
@@ -269,7 +594,7 @@
       "name": "Mark Complete",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
-      "position": [2560, 520],
+      "position": [4320, 400],
       "credentials": {
         "postgres": {
           "id": "cd-postgres-main",
@@ -295,9 +620,42 @@
       ]
     },
     "Parse Input": {
+      "main": [[{ "node": "Is Voice?", "type": "main", "index": 0 }]]
+    },
+    "Is Voice?": {
+      "main": [
+        [{ "node": "Send Transcribing Status", "type": "main", "index": 0 }],
+        [{ "node": "Log Incoming Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Transcribing Status": {
+      "main": [[{ "node": "Get Voice File Info", "type": "main", "index": 0 }]]
+    },
+    "Get Voice File Info": {
+      "main": [[{ "node": "Download Voice File", "type": "main", "index": 0 }]]
+    },
+    "Download Voice File": {
+      "main": [[{ "node": "Transcribe Voice", "type": "main", "index": 0 }]]
+    },
+    "Transcribe Voice": {
+      "main": [[{ "node": "Parse Transcription", "type": "main", "index": 0 }]]
+    },
+    "Parse Transcription": {
+      "main": [[{ "node": "Transcription OK?", "type": "main", "index": 0 }]]
+    },
+    "Transcription OK?": {
+      "main": [
+        [{ "node": "Send Transcription Error", "type": "main", "index": 0 }],
+        [{ "node": "Echo Transcription", "type": "main", "index": 0 }]
+      ]
+    },
+    "Echo Transcription": {
       "main": [[{ "node": "Log Incoming Message", "type": "main", "index": 0 }]]
     },
     "Log Incoming Message": {
+      "main": [[{ "node": "Ollama Agent Wrapper", "type": "main", "index": 0 }]]
+    },
+    "Ollama Agent Wrapper": {
       "main": [[{ "node": "Supervisor Agent", "type": "main", "index": 0 }]]
     },
     "Chat Memory": {
@@ -316,12 +674,39 @@
       "ai_tool": [[{ "node": "Supervisor Agent", "type": "ai_tool", "index": 0 }]]
     },
     "Supervisor Agent": {
+      "main": [[{ "node": "Check Agent Success", "type": "main", "index": 0 }]]
+    },
+    "Check Agent Success": {
+      "main": [
+        [{ "node": "Merge Paths", "type": "main", "index": 0 }],
+        [{ "node": "Prepare Gemini Fallback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Gemini Fallback": {
+      "main": [[{ "node": "Call Gemini API", "type": "main", "index": 0 }]]
+    },
+    "Call Gemini API": {
+      "main": [
+        [{ "node": "Parse Gemini Response", "type": "main", "index": 0 }],
+        [{ "node": "Handle Gemini Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse Gemini Response": {
+      "main": [[{ "node": "Log Fallback Event", "type": "main", "index": 0 }]]
+    },
+    "Log Fallback Event": {
+      "main": [[{ "node": "Merge Paths", "type": "main", "index": 1 }]]
+    },
+    "Handle Gemini Failure": {
+      "main": [[{ "node": "Merge Paths", "type": "main", "index": 1 }]]
+    },
+    "Merge Paths": {
       "main": [[{ "node": "Log Routing Decision", "type": "main", "index": 0 }]]
     },
     "Log Routing Decision": {
-      "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Format Output (ADHD)", "type": "main", "index": 0 }]]
     },
-    "Format Output": {
+    "Format Output (ADHD)": {
       "main": [[{ "node": "Log Outgoing Response", "type": "main", "index": 0 }]]
     },
     "Log Outgoing Response": {
@@ -341,15 +726,34 @@
     { "name": "12WY" },
     { "name": "Supervisor" },
     { "name": "Agentic" },
-    { "name": "Dedup" }
+    { "name": "Dedup" },
+    { "name": "Resilient" },
+    { "name": "Voice" },
+    { "name": "ADHD" }
   ],
   "meta": {
-    "notes": "Supervisor Agent v3.0 (AI Routing Core): Enhanced AI-driven tool selection with natural language understanding. Features: (1) Intent-based routing with 70% confidence threshold, (2) Routing decision logging for analytics, (3) PostgreSQL message deduplication, (4) 13-message chat memory window. Tools connected: ADHD Commander, Finance Manager, System Status. Satisfies SC-3.1 through SC-3.4.",
+    "notes": "Supervisor Agent v6.0 (ADHD Formatting): Added ADHD-optimized output formatting. Features: (1) Bold keywords for scanning, (2) Bullet truncation (max 3), (3) Next-step extraction, (4) TL;DR with spoiler for long responses. Satisfies SC-7.1 through SC-7.4. Previous: Voice pipeline, Gemini fallback, 13-message memory.",
     "templateCredsSetupCompleted": true,
     "toolInventory": {
       "ADHD_Commander": "Task prioritization and focus guidance from Notion",
       "Finance_Manager": "Transaction logging and financial tracking",
       "System_Status": "Infrastructure health checks and system monitoring"
+    },
+    "fallbackConfig": {
+      "primary": "ollama-qwen2.5:7b",
+      "secondary": "gemini-2.0-flash",
+      "escalationThreshold": 3
+    },
+    "voiceConfig": {
+      "whisperModel": "base",
+      "whisperLanguage": "en",
+      "maxDuration": 60
+    },
+    "adhdConfig": {
+      "tldrThreshold": 300,
+      "maxTldrLength": 100,
+      "maxBullets": 3,
+      "parseMode": "MarkdownV2"
     }
   }
 }

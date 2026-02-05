@@ -1,6 +1,6 @@
 # State: Cyber-Squire Telegram Router
 
-**Current Phase:** 6 - Voice Pipeline
+**Current Phase:** 7 - Output Formatting
 **Phase Status:** Executed ✓
 **Last Updated:** 2026-02-05
 
@@ -16,7 +16,7 @@
 | 4 | Memory & Context | **EXECUTED** ✓ | 4/4 |
 | 5 | Fallback & Resilience | **EXECUTED** ✓ | 4/4 |
 | 6 | Voice Pipeline | **EXECUTED** ✓ | 4/4 |
-| 7 | Output Formatting | PLANNED (not deployed) | Ready |
+| 7 | Output Formatting | **EXECUTED** ✓ | 2/2 |
 | 8 | Interactive UI | PLANNED (not deployed) | Ready |
 | 9 | Core Tools | PLANNED (not deployed) | Ready |
 | 10 | Extended Tools | PLANNED (not deployed) | Ready |
@@ -72,12 +72,22 @@
 - ✓ voice_transcriptions PostgreSQL table for logging
 - ✓ Error handling with continueOnFail
 
+### Phase 7 Deliverables
+- ✓ ADHD-optimized Format Output node in workflow
+- ✓ Bold keywords (status words, numbers with units)
+- ✓ Bullet truncation (max 3 + "... and X more")
+- ✓ Emoji bullets: ✅ success, ❌ error, ⚠️ warning
+- ✓ Next-step extraction for actionable responses
+- ✓ TL;DR with spoiler for long responses (>300 chars)
+- ✓ MarkdownV2 parse mode for Telegram
+- ✓ Workflow updated to v6.0 with ADHD tag
+
 ---
 
 ## What's Planned (Local Only)
 
-### Phases 7-10
-- Output formatting, buttons, tools
+### Phases 8-10
+- Interactive UI (buttons), Core Tools, Extended Tools
 - All plans in `.planning/phases/`
 
 ---
@@ -94,6 +104,15 @@ To activate Phase 5 fallback:
 
 ## Session Log
 
+### 2026-02-05 (Phase 7 Execution)
+- **Phase 7:** Output Formatting EXECUTED
+  - ADHD formatting integrated into Format Output node ✓
+  - Bold keywords, bullet truncation, next-step extraction ✓
+  - TL;DR with Telegram spoiler for long responses ✓
+  - MarkdownV2 parse mode enabled ✓
+  - Workflow updated to v6.0 ✓
+- **Next action:** Execute Phase 8 (Interactive UI)
+
 ### 2026-02-05 (Phase 6 Execution)
 - **Phase 6:** Voice Pipeline EXECUTED
   - faster-whisper container deployed (healthy) ✓
@@ -101,7 +120,6 @@ To activate Phase 5 fallback:
   - Voice detection and transcription pipeline ✓
   - voice_transcriptions table deployed ✓
   - All 5 success criteria met ✓
-- **Next action:** Execute Phase 7 (Output Formatting)
 
 ### 2026-02-05 (Phases 4 & 5 Execution)
 - **Phase 4:** Memory & Context EXECUTED
