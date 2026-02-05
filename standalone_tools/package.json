@@ -1,0 +1,30 @@
+{
+  "name": "cyber-squire-standalone-tools",
+  "version": "1.0.0",
+  "description": "Standalone tools for Cyber-Squire Telegram Router (Phases 7-10)",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "security:scan": "node aws_security_tool.js",
+    "security:critical": "node aws_security_tool.js --critical-only",
+    "test": "node test_tools.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-securityhub": "^3.500.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "aws",
+    "security-hub",
+    "telegram",
+    "adhd",
+    "automation"
+  ],
+  "author": "Tigoue Theory LLC",
+  "license": "UNLICENSED"
+}

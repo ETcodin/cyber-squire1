@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract message_id for deduplication\nconst raw = $input.first().json;\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\nconst messageId = message.message_id || callbackMsg.message_id;\nconst chatId = message.chat?.id || callbackMsg.chat?.id;\nconst userId = message.from?.id || callback.from?.id;\nconst text = (message.text || callback.data || '').trim();\n\nif (!messageId || !chatId) {\n  throw new Error('Could not extract message_id or chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    message_id: messageId,\n    chat_id: chatId,\n    user_id: userId,\n    message_text: text,\n    raw: raw\n  }\n};"
+        "jsCode": "// Extract message_id for deduplication + callback detection\nconst raw = $input.first().json;\nconst message = raw.message || {};\nconst callback = raw.callback_query || {};\nconst callbackMsg = callback.message || {};\n\nconst isCallback = !!callback.id;\nconst messageId = message.message_id || callbackMsg.message_id;\nconst chatId = message.chat?.id || callbackMsg.chat?.id;\nconst userId = message.from?.id || callback.from?.id;\nconst text = (message.text || callback.data || '').trim();\n\n// Calculate button age for callbacks\nlet buttonAge = 0;\nif (isCallback && callbackMsg.date) {\n  buttonAge = Math.floor(Date.now() / 1000) - callbackMsg.date;\n}\n\nif (!chatId) {\n  throw new Error('Could not extract chat_id from Telegram update');\n}\n\nreturn {\n  json: {\n    message_id: messageId || `cb_${callback.id}`,\n    chat_id: chatId,\n    user_id: userId,\n    message_text: text,\n    raw: raw,\n    isCallback,\n    callbackId: callback.id || null,\n    callbackData: callback.data || null,\n    buttonAge\n  }\n};"
       },
       "id": "extract-message-id",
       "name": "Extract Message ID",
@@ -86,7 +86,171 @@
       "name": "Skip Duplicate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 280]
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "callback-check",
+              "leftValue": "={{ $('Extract Message ID').first().json.isCallback === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-callback",
+      "name": "Is Callback?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase 8: Callback Handler - Parse callback data and check expiration\nconst ctx = $('Extract Message ID').first().json;\nconst EXPIRATION_SECONDS = 300; // 5 minutes\n\nconst callbackData = ctx.callbackData || '';\nconst buttonAge = ctx.buttonAge || 0;\nconst isExpired = buttonAge > EXPIRATION_SECONDS;\n\n// Parse callback format: action:param1:param2...\nconst parts = callbackData.split(':');\nconst action = parts[0] || 'unknown';\nconst params = parts.slice(1);\n\n// Determine callback type\nlet callbackType = 'unknown';\nif (action.startsWith('yes_') || action.startsWith('no_')) {\n  callbackType = 'confirmation';\n} else if (action === 'set_priority') {\n  callbackType = 'priority';\n} else if (action === 'menu_') {\n  callbackType = 'menu';\n}\n\nconsole.log('CALLBACK_RECEIVED:', JSON.stringify({\n  callbackId: ctx.callbackId,\n  action,\n  params,\n  buttonAge,\n  isExpired,\n  callbackType\n}));\n\nreturn {\n  json: {\n    chatId: String(ctx.chat_id),\n    userId: ctx.user_id,\n    callbackId: ctx.callbackId,\n    callbackData,\n    action,\n    params,\n    buttonAge,\n    isExpired,\n    callbackType,\n    originalMessageId: ctx.raw.callback_query?.message?.message_id\n  }\n};"
+      },
+      "id": "parse-callback",
+      "name": "Parse Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "expired-check",
+              "leftValue": "={{ $json.isExpired === true }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-expired",
+      "name": "Button Expired?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $credentials.telegramApi.token }}/answerCallbackQuery",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ callback_query_id: $json.callbackId, text: '⏰ Button expired (>5 min). Please try again.', show_alert: true }) }}",
+        "options": {}
+      },
+      "id": "answer-expired",
+      "name": "Answer Expired",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 180],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $credentials.telegramApi.token }}/answerCallbackQuery",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ callback_query_id: $json.callbackId, text: '' }) }}",
+        "options": {}
+      },
+      "id": "answer-callback",
+      "name": "Acknowledge Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 380],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route callback to appropriate handler\nconst ctx = $('Parse Callback').first().json;\nconst action = ctx.action;\nconst params = ctx.params;\n\nlet responseText = '';\nlet shouldEdit = true;\n\n// Handle confirmation callbacks (yes_/no_)\nif (action.startsWith('yes_')) {\n  const confirmAction = action.replace('yes_', '');\n  responseText = `✅ **Confirmed:** ${confirmAction}\\n\\nExecuting action...`;\n  \n  // Add specific handling\n  if (confirmAction === 'scan') {\n    responseText = `✅ **Scan confirmed**\\n\\nScanning ${params[0] || 'target'}...`;\n  } else if (confirmAction === 'delete') {\n    responseText = `✅ **Delete confirmed**\\n\\nDeleting ${params[0] || 'item'}...`;\n  }\n} else if (action.startsWith('no_')) {\n  const confirmAction = action.replace('no_', '');\n  responseText = `❌ **Cancelled:** ${confirmAction}`;\n  \n} else if (action === 'set_priority') {\n  const priority = params[0] || 'medium';\n  const taskId = params[1] || 'unknown';\n  const emoji = { high: '🔴', medium: '🟡', low: '🟢' }[priority] || '⚪';\n  responseText = `${emoji} Priority set to **${priority}** for task ${taskId}`;\n  \n} else if (action === 'menu') {\n  const selection = params[0] || 'unknown';\n  responseText = `📋 Selected: **${selection}**`;\n  \n} else {\n  responseText = `⚠️ Unknown action: ${action}`;\n}\n\nconsole.log('CALLBACK_ROUTED:', JSON.stringify({\n  action,\n  params,\n  response: responseText.substring(0, 50)\n}));\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    messageId: ctx.originalMessageId,\n    text: responseText,\n    shouldEdit,\n    action,\n    params,\n    callbackId: ctx.callbackId\n  }\n};"
+      },
+      "id": "route-callback",
+      "name": "Route Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $credentials.telegramApi.token }}/editMessageText",
+        "authentication": "none",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, message_id: $json.messageId, text: $json.text, parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "id": "edit-callback-message",
+      "name": "Edit Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 380],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot-main",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO button_interactions (callback_query_id, user_id, action, params, button_age_seconds, is_expired, decision, time_to_decision)\nVALUES ($1, $2, $3, $4, $5, $6, $7, $8)\nON CONFLICT (callback_query_id) DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ $('Parse Callback').first().json.callbackId }},={{ $('Parse Callback').first().json.userId }},={{ $('Parse Callback').first().json.action }},={{ JSON.stringify($('Parse Callback').first().json.params) }},={{ $('Parse Callback').first().json.buttonAge }},={{ $('Parse Callback').first().json.isExpired }},={{ $json.action?.startsWith('yes_') ? 'yes' : ($json.action?.startsWith('no_') ? 'no' : $json.action) }},={{ $('Parse Callback').first().json.buttonAge }}"
+        }
+      },
+      "id": "log-button-interaction",
+      "name": "Log Button Interaction",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2440, 380],
+      "credentials": {
+        "postgres": {
+          "id": "cd-postgres-main",
+          "name": "CD PostgreSQL"
+        }
+      }
     },
     {
       "parameters": {
@@ -544,7 +708,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Phase 7: ADHD-Optimized Output Formatting\n// Transforms AI responses for maximum ADHD readability\nconst ctx = $('Log Incoming Message').first().json;\nconst agent = $input.first().json;\n\nlet response = agent.output || agent.text || 'Processing complete.';\n\n// === ADHD FORMATTING FUNCTIONS ===\n\n// 1. Bold Keywords: Highlight important terms for scanning\nfunction boldKeywords(text) {\n  // Status words (case-insensitive)\n  const statusWords = ['healthy', 'running', 'ready', 'complete', 'completed', 'success', 'successful',\n    'failed', 'error', 'warning', 'critical', 'down', 'offline', 'online', 'active', 'inactive',\n    'enabled', 'disabled', 'started', 'stopped', 'pending', 'processing'];\n  \n  // Action verbs (imperative)\n  const actionVerbs = ['run', 'check', 'update', 'create', 'delete', 'restart', 'deploy',\n    'configure', 'install', 'verify', 'test', 'fix', 'review', 'confirm', 'submit', 'send'];\n  \n  // Numbers with units (16GB, 45%, 2.3s, etc.)\n  text = text.replace(/(\\d+(?:\\.\\d+)?\\s*(?:GB|MB|KB|TB|ms|s|%|min|hour|day|week)s?)/gi, '**$1**');\n  \n  // Status words\n  statusWords.forEach(word => {\n    const regex = new RegExp(`\\\\b(${word})\\\\b`, 'gi');\n    text = text.replace(regex, '**$1**');\n  });\n  \n  // Don't double-bold (clean up **word** → **word**)\n  text = text.replace(/\\*\\*\\*\\*([^*]+)\\*\\*\\*\\*/g, '**$1**');\n  \n  return text;\n}\n\n// 2. Truncate Bullet Lists: Max 3 items visible\nfunction truncateBullets(text) {\n  const lines = text.split('\\n');\n  const result = [];\n  let bulletCount = 0;\n  let inBulletList = false;\n  let hiddenCount = 0;\n  \n  for (let i = 0; i < lines.length; i++) {\n    const line = lines[i];\n    const isBullet = /^[\\s]*[-•*]\\s/.test(line) || /^[\\s]*\\d+\\.\\s/.test(line);\n    \n    if (isBullet) {\n      inBulletList = true;\n      bulletCount++;\n      \n      if (bulletCount <= 3) {\n        // Add emoji prefix for visual hierarchy\n        let formattedLine = line;\n        if (line.toLowerCase().includes('healthy') || line.toLowerCase().includes('success') || line.toLowerCase().includes('complete')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1✅ ');\n        } else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed') || line.toLowerCase().includes('down')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1❌ ');\n        } else if (line.toLowerCase().includes('warning') || line.toLowerCase().includes('attention')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1⚠️ ');\n        }\n        result.push(formattedLine);\n      } else {\n        hiddenCount++;\n      }\n    } else {\n      // Not a bullet - if we were in a list and have hidden items, add summary\n      if (inBulletList && hiddenCount > 0) {\n        result.push(`... and ${hiddenCount} more`);\n        hiddenCount = 0;\n        bulletCount = 0;\n      }\n      inBulletList = false;\n      bulletCount = 0;\n      result.push(line);\n    }\n  }\n  \n  // Handle end of text with hidden bullets\n  if (hiddenCount > 0) {\n    result.push(`... and ${hiddenCount} more`);\n  }\n  \n  return result.join('\\n');\n}\n\n// 3. Extract Next Step: Find and format action item\nfunction extractNextStep(text) {\n  // Look for existing \"next step\" or action indicators\n  if (text.toLowerCase().includes('next step:')) {\n    return text; // Already has next step\n  }\n  \n  // Look for action phrases\n  const actionPatterns = [\n    /you should ([^.!?]+)/i,\n    /please ([^.!?]+)/i,\n    /try ([^.!?]+)/i,\n    /run ([^.!?]+)/i,\n    /check ([^.!?]+)/i\n  ];\n  \n  for (const pattern of actionPatterns) {\n    const match = text.match(pattern);\n    if (match && match[1]) {\n      const action = match[1].trim();\n      // Capitalize first letter\n      const capitalizedAction = action.charAt(0).toUpperCase() + action.slice(1);\n      return text + '\\n\\n**Next step:** ' + capitalizedAction;\n    }\n  }\n  \n  return text;\n}\n\n// 4. TL;DR for Long Responses (>300 chars)\nfunction addTldr(text) {\n  const THRESHOLD = 300;\n  const MAX_TLDR = 100;\n  \n  if (text.length <= THRESHOLD) {\n    return text; // Short enough, no TL;DR needed\n  }\n  \n  // Generate simple TL;DR from first sentence or key info\n  let tldr = '';\n  \n  // Try to extract first meaningful sentence\n  const firstSentence = text.match(/^[^.!?]+[.!?]/)?.[0] || '';\n  \n  if (firstSentence && firstSentence.length <= MAX_TLDR) {\n    tldr = firstSentence.trim();\n  } else {\n    // Truncate intelligently\n    tldr = text.substring(0, MAX_TLDR - 3).trim();\n    // Cut at last space to avoid word breaks\n    const lastSpace = tldr.lastIndexOf(' ');\n    if (lastSpace > 50) {\n      tldr = tldr.substring(0, lastSpace);\n    }\n    tldr += '...';\n  }\n  \n  // Format with spoiler for details\n  // Note: Telegram spoiler uses ||text|| syntax\n  return `**TL;DR:** ${tldr}\\n\\n_(Tap gray box for details)_\\n\\n||${text}||`;\n}\n\n// === APPLY FORMATTING ===\n\n// Step 1: Bold keywords first (before other formatting)\nresponse = boldKeywords(response);\n\n// Step 2: Truncate bullet lists\nresponse = truncateBullets(response);\n\n// Step 3: Add next step for actionable responses\nresponse = extractNextStep(response);\n\n// Step 4: Add TL;DR for long responses\nresponse = addTldr(response);\n\n// Final safety: Telegram max is 4096 chars\nif (response.length > 4000) {\n  response = response.substring(0, 3997) + '...';\n}\n\nconsole.log('ADHD_FORMAT:', JSON.stringify({\n  originalLength: (agent.output || '').length,\n  formattedLength: response.length,\n  hasTldr: response.includes('TL;DR'),\n  hasBullets: response.includes('... and'),\n  hasNextStep: response.includes('Next step:')\n}));\n\nreturn {\n  json: {\n    chatId: ctx.chatId,\n    messageId: ctx.messageId,\n    text: response\n  }\n};"
+        "jsCode": "// Phase 7+8: ADHD-Optimized Output Formatting + Button Templates\nconst ctx = $('Log Incoming Message').first().json;\nconst agent = $input.first().json;\n\nlet response = agent.output || agent.text || 'Processing complete.';\nlet buttons = null;\n\n// === BUTTON TEMPLATE FUNCTIONS (Phase 8) ===\nfunction confirmButtons(action, param) {\n  const suffix = param ? ':' + param : '';\n  return [[{ text: '✅ Yes', callback_data: 'yes_' + action + suffix }, { text: '❌ No', callback_data: 'no_' + action + suffix }]];\n}\n\nfunction priorityButtons(taskId) {\n  const suffix = taskId ? ':' + taskId : '';\n  return [[{ text: '🔴 High', callback_data: 'set_priority:high' + suffix }, { text: '🟡 Medium', callback_data: 'set_priority:medium' + suffix }, { text: '🟢 Low', callback_data: 'set_priority:low' + suffix }]];\n}\n\nfunction detectButtonNeed(text) {\n  const lower = text.toLowerCase();\n  if (lower.includes('delete') || lower.includes('remove')) {\n    const target = text.match(/delete\\s+([\\w-]+)/i)?.[1] || 'item';\n    return { type: 'confirm', action: 'delete', param: target };\n  }\n  if (lower.includes('scan') && lower.includes('security')) {\n    const target = text.match(/scan\\s+([\\w.-]+)/i)?.[1] || 'target';\n    return { type: 'confirm', action: 'scan', param: target };\n  }\n  if (lower.includes('created task') || lower.includes('new task')) {\n    const taskId = text.match(/task[:\\s]+([\\w-]+)/i)?.[1] || '';\n    return { type: 'priority', taskId: taskId };\n  }\n  return null;\n}\n\nconst buttonNeed = detectButtonNeed(response);\nif (buttonNeed) {\n  if (buttonNeed.type === 'confirm') {\n    buttons = confirmButtons(buttonNeed.action, buttonNeed.param);\n    response += '\\n\\n⚠️ **Confirm action?**';\n  } else if (buttonNeed.type === 'priority') {\n    buttons = priorityButtons(buttonNeed.taskId);\n    response += '\\n\\n📊 **Set priority:**';\n  }\n}\n\n// === ADHD FORMATTING FUNCTIONS ===\nfunction boldKeywords(text) {\n  const statusWords = ['healthy', 'running', 'ready', 'complete', 'completed', 'success', 'failed', 'error', 'warning', 'critical', 'down', 'offline', 'online', 'active', 'inactive', 'enabled', 'disabled', 'started', 'stopped', 'pending', 'processing'];\n  text = text.replace(/(\\d+(?:\\.\\d+)?\\s*(?:GB|MB|KB|TB|ms|s|%|min|hour|day|week)s?)/gi, '**$1**');\n  statusWords.forEach(word => {\n    const regex = new RegExp('\\\\b(' + word + ')\\\\b', 'gi');\n    text = text.replace(regex, '**$1**');\n  });\n  text = text.replace(/\\*\\*\\*\\*([^*]+)\\*\\*\\*\\*/g, '**$1**');\n  return text;\n}\n\nfunction truncateBullets(text) {\n  const lines = text.split('\\n');\n  const result = [];\n  let bulletCount = 0;\n  let inBulletList = false;\n  let hiddenCount = 0;\n  for (let i = 0; i < lines.length; i++) {\n    const line = lines[i];\n    const isBullet = /^[\\s]*[-•*]\\s/.test(line) || /^[\\s]*\\d+\\.\\s/.test(line);\n    if (isBullet) {\n      inBulletList = true;\n      bulletCount++;\n      if (bulletCount <= 3) {\n        let formattedLine = line;\n        if (line.toLowerCase().includes('healthy') || line.toLowerCase().includes('success')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1✅ ');\n        } else if (line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1❌ ');\n        } else if (line.toLowerCase().includes('warning')) {\n          formattedLine = line.replace(/^([\\s]*[-•*]\\s)/, '$1⚠️ ');\n        }\n        result.push(formattedLine);\n      } else {\n        hiddenCount++;\n      }\n    } else {\n      if (inBulletList && hiddenCount > 0) {\n        result.push('... and ' + hiddenCount + ' more');\n        hiddenCount = 0;\n        bulletCount = 0;\n      }\n      inBulletList = false;\n      bulletCount = 0;\n      result.push(line);\n    }\n  }\n  if (hiddenCount > 0) {\n    result.push('... and ' + hiddenCount + ' more');\n  }\n  return result.join('\\n');\n}\n\nfunction extractNextStep(text) {\n  if (text.toLowerCase().includes('next step:')) return text;\n  const patterns = [/you should ([^.!?]+)/i, /please ([^.!?]+)/i, /try ([^.!?]+)/i, /run ([^.!?]+)/i, /check ([^.!?]+)/i];\n  for (const pattern of patterns) {\n    const match = text.match(pattern);\n    if (match && match[1]) {\n      const action = match[1].trim();\n      return text + '\\n\\n**Next step:** ' + action.charAt(0).toUpperCase() + action.slice(1);\n    }\n  }\n  return text;\n}\n\nfunction addTldr(text) {\n  if (text.length <= 300) return text;\n  let tldr = '';\n  const firstSentence = text.match(/^[^.!?]+[.!?]/)?.[0] || '';\n  if (firstSentence && firstSentence.length <= 100) {\n    tldr = firstSentence.trim();\n  } else {\n    tldr = text.substring(0, 97).trim();\n    const lastSpace = tldr.lastIndexOf(' ');\n    if (lastSpace > 50) tldr = tldr.substring(0, lastSpace);\n    tldr += '...';\n  }\n  return '**TL;DR:** ' + tldr + '\\n\\n_(Tap gray box for details)_\\n\\n||' + text + '||';\n}\n\n// Apply formatting\nresponse = boldKeywords(response);\nresponse = truncateBullets(response);\nresponse = extractNextStep(response);\nresponse = addTldr(response);\n\nif (response.length > 4000) response = response.substring(0, 3997) + '...';\n\nconsole.log('ADHD_FORMAT:', JSON.stringify({ originalLen: (agent.output || '').length, formattedLen: response.length, hasButtons: !!buttons }));\n\nreturn { json: { chatId: ctx.chatId, messageId: ctx.messageId, text: response, buttons: buttons } };"
       },
       "id": "format-output",
       "name": "Format Output (ADHD)",
@@ -567,7 +731,8 @@
         "chatId": "={{ $json.chatId }}",
         "text": "={{ $json.text }}",
         "additionalFields": {
-          "parse_mode": "MarkdownV2"
+          "parse_mode": "MarkdownV2",
+          "reply_markup": "={{ $json.buttons ? JSON.stringify({ inline_keyboard: $json.buttons }) : '' }}"
         }
       },
       "id": "send-response",
@@ -616,8 +781,32 @@
     "Is Duplicate?": {
       "main": [
         [{ "node": "Skip Duplicate", "type": "main", "index": 0 }],
+        [{ "node": "Is Callback?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is Callback?": {
+      "main": [
+        [{ "node": "Parse Callback", "type": "main", "index": 0 }],
         [{ "node": "Parse Input", "type": "main", "index": 0 }]
       ]
+    },
+    "Parse Callback": {
+      "main": [[{ "node": "Button Expired?", "type": "main", "index": 0 }]]
+    },
+    "Button Expired?": {
+      "main": [
+        [{ "node": "Answer Expired", "type": "main", "index": 0 }],
+        [{ "node": "Acknowledge Callback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Acknowledge Callback": {
+      "main": [[{ "node": "Route Callback", "type": "main", "index": 0 }]]
+    },
+    "Route Callback": {
+      "main": [[{ "node": "Edit Message", "type": "main", "index": 0 }]]
+    },
+    "Edit Message": {
+      "main": [[{ "node": "Log Button Interaction", "type": "main", "index": 0 }]]
     },
     "Parse Input": {
       "main": [[{ "node": "Is Voice?", "type": "main", "index": 0 }]]
@@ -729,10 +918,11 @@
     { "name": "Dedup" },
     { "name": "Resilient" },
     { "name": "Voice" },
-    { "name": "ADHD" }
+    { "name": "ADHD" },
+    { "name": "Buttons" }
   ],
   "meta": {
-    "notes": "Supervisor Agent v6.0 (ADHD Formatting): Added ADHD-optimized output formatting. Features: (1) Bold keywords for scanning, (2) Bullet truncation (max 3), (3) Next-step extraction, (4) TL;DR with spoiler for long responses. Satisfies SC-7.1 through SC-7.4. Previous: Voice pipeline, Gemini fallback, 13-message memory.",
+    "notes": "Supervisor Agent v7.0 (Interactive Buttons): Added Telegram inline button support. Features: (1) Callback handler with 5-min expiration, (2) Yes/No confirmation buttons, (3) Priority selector buttons, (4) Auto-detect destructive actions. Satisfies SC-8.1 through SC-8.4. Previous: ADHD formatting, Voice pipeline, Gemini fallback.",
     "templateCredsSetupCompleted": true,
     "toolInventory": {
       "ADHD_Commander": "Task prioritization and focus guidance from Notion",
@@ -754,6 +944,12 @@
       "maxTldrLength": 100,
       "maxBullets": 3,
       "parseMode": "MarkdownV2"
+    },
+    "buttonConfig": {
+      "expirationSeconds": 300,
+      "confirmActions": ["delete", "scan", "restart", "deploy"],
+      "priorityActions": ["create_task", "set_priority"],
+      "templates": ["yes_no", "priority", "menu"]
     }
   }
 }

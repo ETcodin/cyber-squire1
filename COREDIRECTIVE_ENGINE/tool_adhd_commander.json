@@ -1,0 +1,40 @@
+{
+  "name": "Tool: ADHD Commander",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "tool-trigger",
+      "name": "When Executed by Agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ADHD Commander Tool - Phase 9\n// Returns prioritized task recommendation\n\n// Mock task data (will connect to Notion API in production)\nconst mockTasks = [\n  {\n    title: 'Complete Phase 10 deployment',\n    priority: 'high',\n    deadline: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],\n    status: 'In Progress',\n    estimated: '3 hours',\n    notionUrl: 'https://notion.so/task-123'\n  },\n  {\n    title: 'Review security scan results',\n    priority: 'medium',\n    deadline: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],\n    status: 'Not Started',\n    estimated: '1 hour',\n    notionUrl: 'https://notion.so/task-456'\n  }\n];\n\n// Select highest priority task\nconst priorityOrder = { high: 1, medium: 2, low: 3 };\nconst sorted = mockTasks.sort((a, b) => {\n  // In Progress tasks first\n  if (a.status === 'In Progress' && b.status !== 'In Progress') return -1;\n  if (b.status === 'In Progress' && a.status !== 'In Progress') return 1;\n  // Then by priority\n  return priorityOrder[a.priority] - priorityOrder[b.priority];\n});\n\nconst selected = sorted[0];\n\n// Format ADHD-friendly response\nconst priorityEmoji = { high: '🔴', medium: '🟡', low: '🟢' };\n\nlet response = `**ADHD Commander**\\n\\n`;\nresponse += `**Work on:** ${selected.title}\\n\\n`;\nresponse += `**Why:** ${selected.priority === 'high' ? 'High priority' : 'Good fit for current energy'}`;\nresponse += selected.status === 'In Progress' ? ', already in progress (reduces context switching)' : '';\nresponse += selected.deadline ? `, due ${selected.deadline}` : '';\nresponse += `\\n\\n`;\nresponse += `**Details:**\\n`;\nresponse += `• Priority: ${priorityEmoji[selected.priority]} ${selected.priority.charAt(0).toUpperCase() + selected.priority.slice(1)}\\n`;\nresponse += `• Deadline: ${selected.deadline}\\n`;\nresponse += `• Estimated time: ${selected.estimated}\\n\\n`;\nresponse += `**Next step:** Open this task and start working!`;\n\nreturn {\n  json: {\n    output: response,\n    task: selected,\n    notionUrl: selected.notionUrl\n  }\n};"
+      },
+      "id": "select-task",
+      "name": "Select Priority Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    }
+  ],
+  "connections": {
+    "When Executed by Agent": {
+      "main": [[{ "node": "Select Priority Task", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "Tool" },
+    { "name": "Phase9" },
+    { "name": "ADHD" }
+  ],
+  "meta": {
+    "notes": "ADHD Commander Tool (Phase 9): Selects highest priority task based on deadline, status, and energy level. Returns single focused recommendation."
+  }
+}

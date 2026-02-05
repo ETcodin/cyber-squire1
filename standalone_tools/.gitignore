@@ -1,0 +1,23 @@
+# Environment files with secrets
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test output
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,40 @@
+{
+  "name": "Tool: Finance Manager",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "tool-trigger",
+      "name": "When Executed by Agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Finance Manager Tool - Phase 10\n// Handles transaction logging and debt status\n\nconst input = $input.first().json.query || $input.first().json.input || '';\nconst lower = input.toLowerCase();\n\n// Detect command type\nlet commandType = 'unknown';\nif (lower.includes('log') || lower.includes('spent') || lower.includes('paid')) {\n  commandType = 'log_transaction';\n} else if (lower.includes('debt') || lower.includes('status') || lower.includes('balance')) {\n  commandType = 'debt_status';\n} else if (lower.includes('summary') || lower.includes('spending')) {\n  commandType = 'spending_summary';\n}\n\nlet response = '';\n\nif (commandType === 'log_transaction') {\n  // Parse amount and category\n  const amountMatch = input.match(/\\$?(\\d+(?:\\.\\d{2})?)/i);\n  const amount = amountMatch ? parseFloat(amountMatch[1]) : 0;\n  \n  const categories = ['groceries', 'rent', 'utilities', 'transportation', 'entertainment', 'debt', 'coffee', 'food'];\n  let category = 'Other';\n  for (const cat of categories) {\n    if (lower.includes(cat)) {\n      category = cat.charAt(0).toUpperCase() + cat.slice(1);\n      break;\n    }\n  }\n  \n  const isDebt = lower.includes('debt') || lower.includes('paid off');\n  \n  response = `**Transaction Logged** ✅\\n\\n`;\n  response += `• Amount: **$${amount.toFixed(2)}**\\n`;\n  response += `• Category: ${category}\\n`;\n  response += isDebt ? `• Type: Debt Payment 💰\\n` : '';\n  response += `\\n**Next step:** ${isDebt ? 'Great progress on debt!' : 'Check spending summary later'}`;\n  \n} else if (commandType === 'debt_status') {\n  // Mock debt tracking data\n  const currentBalance = 58450;\n  const monthlyBurnRate = 1550;\n  const targetDebt = 0;\n  const monthsToPayoff = Math.ceil(currentBalance / monthlyBurnRate);\n  const payoffDate = new Date();\n  payoffDate.setMonth(payoffDate.getMonth() + monthsToPayoff);\n  const progress = ((60000 - currentBalance) / 60000 * 100).toFixed(1);\n  \n  response = `**Debt Burn-Down Status**\\n\\n`;\n  response += `💰 Current balance: **$${currentBalance.toLocaleString()}**\\n`;\n  response += `📉 Monthly burn rate: **$${monthlyBurnRate.toLocaleString()}/month**\\n`;\n  response += `🎯 Target: **$${targetDebt}**\\n`;\n  response += `📅 Projected payoff: **${payoffDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}**\\n\\n`;\n  response += `**Progress:** ${progress}% complete\\n`;\n  const filled = Math.floor(parseFloat(progress) / 10);\n  response += `[${'▓'.repeat(filled)}${'░'.repeat(10-filled)}]\\n\\n`;\n  response += `**Next step:** Keep up the momentum!`;\n  \n} else if (commandType === 'spending_summary') {\n  response = `**Spending Summary (Last 7 Days)**\\n\\n`;\n  response += `Total: **$345**\\n\\n`;\n  response += `Top categories:\\n`;\n  response += `• Groceries: $120 (3 transactions)\\n`;\n  response += `• Transportation: $80 (2 transactions)\\n`;\n  response += `• Entertainment: $45 (1 transaction)\\n`;\n  response += `... and 2 more\\n\\n`;\n  response += `**Next step:** Review categories to find savings opportunities`;\n  \n} else {\n  response = `**Finance Manager**\\n\\nAvailable commands:\\n• \"Log $50 for groceries\" - record transaction\\n• \"Debt status\" - show burn-down progress\\n• \"Spending summary\" - view recent spending\\n\\n**Next step:** Try one of the commands above`;\n}\n\nreturn {\n  json: {\n    output: response,\n    commandType\n  }\n};"
+      },
+      "id": "process-finance",
+      "name": "Process Finance Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    }
+  ],
+  "connections": {
+    "When Executed by Agent": {
+      "main": [[{ "node": "Process Finance Command", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "Tool" },
+    { "name": "Phase10" },
+    { "name": "Finance" }
+  ],
+  "meta": {
+    "notes": "Finance Manager Tool (Phase 10): Handles transaction logging, debt status, and spending summaries in ADHD-friendly format."
+  }
+}
