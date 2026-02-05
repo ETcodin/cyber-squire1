@@ -65,6 +65,34 @@ services:
       - cd-net
 
   # ==========================================
+  # faster-whisper Service (Voice Transcription)
+  # ==========================================
+  # Purpose: Local voice-to-text transcription for Telegram voice notes
+  # - Processes voice notes sent to Cyber-Squire bot
+  # - Returns transcription for AI routing pipeline
+  # - Keeps voice data private (no external API)
+  #
+  cd-service-whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    container_name: cd-service-whisper
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./CD_VOL_WHISPER:/root/.cache/huggingface:z
+    environment:
+      - WHISPER_MODEL=base
+      - WHISPER_LANGUAGE=en
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - cd-net
+
+  # ==========================================
   # Moltbot Service (Lead Enrichment & Automation Bot)
   # ==========================================
   # Purpose: Automates lead discovery, enrichment, and qualification for Operation Nuclear

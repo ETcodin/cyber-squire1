@@ -1,8 +1,8 @@
 # State: Cyber-Squire Telegram Router
 
-**Current Phase:** 3 - AI Routing Core
-**Phase Status:** Executed (pending manual verification)
-**Last Updated:** 2026-02-04
+**Current Phase:** 6 - Voice Pipeline
+**Phase Status:** Executed ✓
+**Last Updated:** 2026-02-05
 
 ---
 
@@ -13,9 +13,9 @@
 | 1 | Infrastructure Foundation | **EXECUTED** ✓ | 4/4 |
 | 2 | Webhook & Message Intake | **EXECUTED** ✓ | 4/4 |
 | 3 | AI Routing Core | **EXECUTED** ✓ | 4/4 |
-| 4 | Memory & Context | PLANNED (not deployed) | Ready |
-| 5 | Fallback & Resilience | PLANNED (not deployed) | Ready |
-| 6 | Voice Pipeline | PLANNED (not deployed) | Ready |
+| 4 | Memory & Context | **EXECUTED** ✓ | 4/4 |
+| 5 | Fallback & Resilience | **EXECUTED** ✓ | 4/4 |
+| 6 | Voice Pipeline | **EXECUTED** ✓ | 4/4 |
 | 7 | Output Formatting | PLANNED (not deployed) | Ready |
 | 8 | Interactive UI | PLANNED (not deployed) | Ready |
 | 9 | Core Tools | PLANNED (not deployed) | Ready |
@@ -43,47 +43,86 @@
 - ✓ Confidence threshold and fallback handling
 - ✓ Routing decision logging with multi-signal confidence
 
+### Phase 4 Deliverables
+- ✓ PostgreSQL chat_memory table with 13-message context window
+- ✓ Auto-pruning trigger (prune_chat_memory_window)
+- ✓ Context retrieval function (get_chat_context)
+- ✓ Weekly cleanup function (cleanup_stale_sessions)
+- ✓ Statistics view (chat_memory_stats)
+- ✓ Chat Memory node connected to Supervisor Agent
+
+### Phase 5 Deliverables
+- ✓ PostgreSQL ai_failures table with auto-resolution trigger
+- ✓ 3 monitoring views (daily metrics, hourly rate, escalation status)
+- ✓ Gemini 2.0 Flash fallback path in workflow
+- ✓ Check Agent Success node for failure detection
+- ✓ Fallback indicator in responses ("_via Gemini fallback_")
+- ✓ Handle Gemini Failure node for quota exhaustion
+- ⏳ GEMINI_API_KEY required for full functionality
+
+### Phase 6 Deliverables
+- ✓ faster-whisper Docker container (fedirz/faster-whisper-server:latest-cpu)
+- ✓ Container healthy with python3 urllib healthcheck
+- ✓ Voice detection in workflow (Is Voice? node)
+- ✓ "Transcribing your voice note..." status message
+- ✓ Telegram voice file download pipeline
+- ✓ faster-whisper API integration (base model, English)
+- ✓ Echo transcription: "You said: [text]"
+- ✓ Transcribed text routes through AI Agent
+- ✓ voice_transcriptions PostgreSQL table for logging
+- ✓ Error handling with continueOnFail
+
 ---
 
 ## What's Planned (Local Only)
 
-### Phase 4: Memory & Context
-- PostgreSQL chat_memory schema
-- 13-message context window
-- Auto-pruning trigger
-- Location: `.planning/phases/04-memory-context/`
-
-### Phase 5: Fallback & Resilience
-- Gemini 2.5 Flash-Lite fallback
-- ai_failures PostgreSQL table
-- 30s timeout detection
-- Location: `.planning/phases/05-fallback-resilience/`
-
-### Phases 6-10
-- Voice pipeline, formatting, buttons, tools
+### Phases 7-10
+- Output formatting, buttons, tools
 - All plans in `.planning/phases/`
 
 ---
 
 ## Manual Steps Required (n8n UI)
 
-Before Phase 4 execution:
-1. Import workflow_supervisor_agent.json
-2. Import workflow_startup_webhook.json
-3. Create `telegram-bot-main` credential
-4. Set TELEGRAM_WEBHOOK_URL env var
-5. Activate both workflows
-6. Test with Telegram message
+To activate Phase 5 fallback:
+1. Get Gemini API key from https://aistudio.google.com/apikey
+2. Add `GEMINI_API_KEY=your_key` to `/home/ec2-user/COREDIRECTIVE_ENGINE/.env`
+3. Restart n8n: `docker-compose restart n8n`
+4. Import updated workflow_supervisor_agent.json via n8n UI
 
 ---
 
 ## Session Log
 
+### 2026-02-05 (Phase 6 Execution)
+- **Phase 6:** Voice Pipeline EXECUTED
+  - faster-whisper container deployed (healthy) ✓
+  - Healthcheck fixed: python3 urllib (no curl in image)
+  - Voice detection and transcription pipeline ✓
+  - voice_transcriptions table deployed ✓
+  - All 5 success criteria met ✓
+- **Next action:** Execute Phase 7 (Output Formatting)
+
+### 2026-02-05 (Phases 4 & 5 Execution)
+- **Phase 4:** Memory & Context EXECUTED
+  - chat_memory table with 13-message auto-pruning ✓
+  - Context functions and stats view ✓
+- **Phase 5:** Fallback & Resilience EXECUTED
+  - ai_failures table with monitoring views ✓
+  - Workflow updated with Gemini fallback path ✓
+  - Workflow JSON deployed to EC2 ✓
+  - **Pending:** GEMINI_API_KEY configuration
+
+### 2026-02-05 (Phase 4 Execution)
+- **Schema deployed:** chat_memory table with auto-pruning
+- **Validated:**
+  - SC-4.2: 13-message context window ✓
+  - SC-4.4: Auto-pruning (kept newest 13 of 16) ✓
+
 ### 2026-02-04 (Session End)
 - **Phases 1-3:** Executed and deployed to EC2
 - **Phases 4-10:** Planned with full documentation
 - **Total tokens used:** ~1M
-- **Next action:** Start fresh session, execute Phase 4
 
 ---
 
