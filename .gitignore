@@ -35,8 +35,9 @@ terraform/cd-aws-automation/backend.tf
 *apikeys*.json
 
 # ============================================
-# SECURITY: Private Documentation
+# SECURITY: Private Documentation & Session State
 # ============================================
+CLAUDE.md
 docs/PRIVATE_OPERATIONS_MANUAL.md
 *PRIVATE*.md
 *SECRET*.md

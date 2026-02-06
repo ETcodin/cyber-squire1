@@ -36,7 +36,7 @@ docker compose up -d
 ### 8 Production Workflows
 
 1. **🏥 API Health Monitor** - Tests 6 API credentials every 6 hours
-2. **🤖 Moltbot Generator** - Natural language → n8n workflow creation
+2. **🤖 OpenClaw Generator** - Natural language → n8n workflow creation
 3. **📂 Drive Watcher** - Monitors 2TB Google Drive for new content
 4. **☢️ Operation Nuclear** - Lead enrichment → AI outreach → Auto-send
 5. **🎬 YouTube Factory** - Video → Transcript → Metadata → 5 Shorts scripts
@@ -48,8 +48,14 @@ docker compose up -d
 
 - **PostgreSQL 16** - Encrypted business data storage
 - **n8n** - Workflow orchestration with credential encryption
-- **Ollama (Qwen 3)** - Local AI (zero cost)
+- **Ollama (Qwen 2.5:7b)** - Local AI (zero cost)
+- **OpenClaw Gateway** - Autonomous AI agent (@CDirective_bot via Claude Sonnet/Opus)
+- **Faster-Whisper** - Local voice transcription
 - **Cloudflare Tunnel** - Zero Trust access gateway
+
+### Telegram Bots
+- **@CDirective_bot** → OpenClaw (Claude Sonnet 4.5 → Opus 4.5 fallback)
+- **@Coredirective_bot** → n8n workflow (Ollama/Qwen 2.5:7b)
 
 ### Security
 
@@ -77,7 +83,7 @@ docker compose up -d
 │  │                                                       │  │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │  │
 │  │  │   n8n    │◄─┤PostgreSQL│  │ Ollama   │          │  │
-│  │  │  :5678   │  │   :5432  │  │ (Qwen 3) │          │  │
+│  │  │  :5678   │  │   :5432  │  │(Qwen2.5) │          │  │
 │  │  └────┬─────┘  └──────────┘  └──────────┘          │  │
 │  │       │                                              │  │
 │  │       │ Orchestrates workflows                      │  │
@@ -87,7 +93,7 @@ docker compose up -d
 │  │  │  • API Health    • Operation Nuclear    │        │  │
 │  │  │  • Drive Watcher • YouTube Factory      │        │  │
 │  │  │  • Gumroad Track • Task Manager         │        │  │
-│  │  │  • Moltbot Gen   • AI Router            │        │  │
+│  │  │  • OpenClaw Gen  • AI Router            │        │  │
 │  │  └─────────────────────────────────────────┘        │  │
 │  │                                                       │  │
 │  │  Volume Mounts (SELinux :z labeled):                │  │
@@ -184,8 +190,8 @@ All routing decisions logged to Notion for cost tracking and optimization.
 **On Failure:** Creates Notion alert page
 **Tests:** Anthropic, GitHub, Google, Gumroad, Notion, Perplexity
 
-### 2. Moltbot Workflow Generator
-**Trigger:** Webhook POST `/webhook/moltbot-command`
+### 2. OpenClaw Workflow Generator
+**Trigger:** Webhook POST `/webhook/openclaw-command`
 **Purpose:** Convert natural language to n8n workflow JSON
 **AI Used:** Qwen (simple) or Claude (complex)
 **Example:** "Create workflow that posts to Twitter when YouTube video published"
@@ -299,7 +305,7 @@ COREDIRECTIVE_ENGINE/
 ├── deploy_workflows.sh          # One-command workflow deployment
 │
 ├── workflow_api_healthcheck.json
-├── workflow_moltbot_generator.json
+├── workflow_openclaw_generator.json
 ├── workflow_gdrive_watcher.json
 ├── workflow_operation_nuclear.json
 ├── workflow_youtube_factory.json
@@ -452,25 +458,17 @@ chcon -Rt svirt_sandbox_file_t ./CD_VOL_N8N
 
 ---
 
-## Roadmap
+## Current Status
 
-### Phase 5: Moltbot Mobile Interface (Next)
-- WhatsApp Business API integration
-- Telegram Bot connection
-- Voice command support
-- Mobile workflow triggers
+### Completed
+- **Telegram Bot (@Coredirective_bot)** - n8n workflow with Ollama/Qwen routing, ADHD Commander, Finance Manager, System Status tools
+- **OpenClaw Agent (@CDirective_bot)** - Autonomous AI agent powered by Claude Sonnet 4.5 (Opus 4.5 fallback), voice support via Faster-Whisper
+- **Lead Supervisor Protocol** - ADHD-optimized system prompt with Consultative Authority
 
-### Phase 6: Revenue Optimization
-- A/B test product pricing
-- Automated upsell sequences
-- Affiliate tracking system
-- Referral reward automation
-
-### Phase 7: Scale Operations
-- Hire VA for manual review queue
+### Next
+- Revenue optimization (A/B pricing, upsell sequences)
 - Expand Operation Nuclear to 50 leads/day
 - YouTube cadence: 3x/week
-- Launch Cyber-Squire community
 
 ---
 

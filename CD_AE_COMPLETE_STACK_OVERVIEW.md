@@ -114,7 +114,7 @@ terraform apply -var="my_ip=$(curl -s http://checkip.amazonaws.com)" --auto-appr
 1. `cd-db` — PostgreSQL 16 Alpine (4GB memory limit)
 2. `cd-n8n` — n8n automation engine (2GB memory limit)
 3. `cd-ollama` — Ollama + Qwen 3 8B (7.5GB memory limit)
-4. `cd-service-moltbot` — Lead enrichment & automation bot (Phase 2 - currently disabled)
+4. `openclaw-gateway` — Autonomous AI agent via Telegram (standalone, ports 18789/18790)
 5. `tunnel-cyber-squire` — Cloudflare Zero Trust Tunnel (active)
 
 **Deployment Command:**
@@ -295,7 +295,7 @@ Docker Services:      cd-*
                       └─ cd-service-db (PostgreSQL)
                       └─ cd-service-n8n (n8n orchestrator)
                       └─ cd-service-ollama (Ollama + Qwen 3)
-                      └─ cd-service-moltbot (lead automation - Phase 2)
+                      └─ openclaw-gateway (AI agent - standalone)
                       └─ tunnel-cyber-squire (Cloudflare Tunnel - active)
 
 Docker Network:       cd-net

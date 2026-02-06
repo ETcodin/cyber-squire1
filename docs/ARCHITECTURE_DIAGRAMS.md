@@ -325,7 +325,7 @@ Total Available: 16GB (16,384 MB)
 │   effective_cache_size = 8GB        (query planner hint)        │
 │   work_mem = 16MB                   (sort/hash operations)      │
 │   maintenance_work_mem = 512MB      (VACUUM, CREATE INDEX)      │
-│   max_connections = 200              (n8n + Moltbot + admin)    │
+│   max_connections = 200              (n8n + OpenClaw + admin)   │
 │                                                                  │
 │ Justification:                                                   │
 │   - n8n executes 50+ parallel workflows during peak             │

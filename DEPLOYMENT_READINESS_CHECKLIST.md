@@ -35,7 +35,7 @@
 
 - ✅ **docker-compose.yaml** (CLEAN v2.0.0 - 2026-01-29)
   - 4 active services: cd-service-db (4GB), cd-service-n8n (2GB), cd-service-ollama (7.5GB), tunnel-cyber-squire
-  - 1 planned service: cd-service-moltbot (Phase 2 - automated lead enrichment)
+  - OpenClaw Gateway runs standalone (not managed by compose)
   - Memory hard limits enforced via deploy.resources.limits.memory (for database, n8n, ollama)
   - Internal network: cd-net (bridge driver)
   - Health checks: PostgreSQL pg_isready, n8n depends on healthy db

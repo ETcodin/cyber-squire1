@@ -15,7 +15,7 @@ Your complete Central Nervous System for business automation. **8 workflows + de
 
 ### Workflows (n8n JSON)
 1. `workflow_api_healthcheck.json` - Monitors API health every 6 hours
-2. `workflow_moltbot_generator.json` - Natural language → workflow creation
+2. `workflow_openclaw_generator.json` - Natural language → workflow creation
 3. `workflow_gdrive_watcher.json` - Watches 2TB Google Drive for new files
 4. `workflow_operation_nuclear.json` - Automated lead enrichment & outreach
 5. `workflow_youtube_factory.json` - Video → transcript → metadata → shorts
@@ -146,7 +146,7 @@ Expected: Perplexity researches → Claude drafts email → Saved to Notion with
 - **Action:** Tests all 6 API credentials
 - **On Failure:** Logs to Notion, creates alert
 
-### 🤖 Moltbot Workflow Generator
+### 🤖 OpenClaw Workflow Generator
 - **Trigger:** Webhook
 - **Action:** Analyzes natural language request → Generates n8n workflow JSON → Creates workflow via API
 - **AI Used:** Qwen (simple) or Claude (complex)
@@ -177,7 +177,7 @@ Expected: Perplexity researches → Claude drafts email → Saved to Notion with
 - **AI Used:** Qwen + Claude
 
 ### 🧠 AI Intelligence Router
-- **Trigger:** Webhook (called by other workflows or Moltbot)
+- **Trigger:** Webhook (called by other workflows or OpenClaw)
 - **Action:** Analyzes request complexity/context → Routes to Qwen (default), Gemini (large context), or Claude (strategic)
 - **AI Used:** All three, intelligently routed
 
@@ -251,14 +251,22 @@ if (complexity === 'strategic' || priority === 'critical') {
 
 ---
 
-## Next: Connect Moltbot
+## Telegram Bots (Active)
 
-Your workflows are ready. To control them from your phone:
+Two bots are live:
 
-1. Build Moltbot service (currently commented out in docker-compose.yaml)
-2. Connect WhatsApp Business API or Telegram Bot
-3. Configure webhooks to trigger n8n workflows
-4. Text commands like "Show me today's leads" → Instant response
+### @CDirective_bot (OpenClaw - Primary)
+- **Engine:** OpenClaw Gateway (openclaw-gateway container)
+- **Model:** Claude Sonnet 4.5 → Opus 4.5 fallback
+- **Capabilities:** Autonomous agent, browser control, multi-step tasks
+- **Config:** `~/openclaw/config/openclaw.json`
+- **Auth:** `~/openclaw/config/agents/main/agent/auth-profiles.json`
+
+### @Coredirective_bot (n8n - Basic)
+- **Engine:** n8n webhook workflow
+- **Model:** Ollama/Qwen 2.5:7b (local, free)
+- **Tools:** ADHD Commander, Finance Manager, System Status
+- **Workflow:** `workflow_supervisor_agent.json`
 
 ---
 
@@ -268,6 +276,4 @@ Your workflows are ready. To control them from your phone:
 **Architecture Details:** See "Architecture Overview" section in guide
 **Security Best Practices:** See "Security Best Practices" section
 
-**You now have a business machine that runs 24/7, automates 90% of routine work, and scales with your revenue.**
-
-**Status: Ready to operate. 🚀**
+**Status: Production - Two bots active, full stack running.**

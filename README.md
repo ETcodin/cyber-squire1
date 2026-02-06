@@ -35,7 +35,7 @@ Built around three core services that handle the heavy lifting:
 
 **Cloudflare Tunnel** → Zero-trust access to the n8n dashboard. No direct public IP exposure, no VPN overhead.
 
-**Moltbot** (Phase 2) → Automated lead enrichment bot. Scrapes SEC filings and profiles to feed the AI. Currently manual because I haven't finished the service integration yet, but the docker-compose config is ready to go.
+**OpenClaw Gateway** (Phase 2) → Autonomous AI agent via Telegram (@CDirective_bot). Powered by Claude Sonnet 4.5 with Opus 4.5 fallback. Handles browser control, multi-step planning, and task execution.
 
 ---
 
@@ -224,7 +224,7 @@ This repo is sanitized for public release:
 - Comprehensive documentation (60+ pages total)
 
 **Phase 2 enhancements:**
-- Moltbot service integration (automated lead scraping)
+- OpenClaw Gateway integration (autonomous AI agent via Telegram)
 - S3 backend for Terraform state (currently local)
 - CloudWatch monitoring and alerting
 - EBS encryption (currently unencrypted)
