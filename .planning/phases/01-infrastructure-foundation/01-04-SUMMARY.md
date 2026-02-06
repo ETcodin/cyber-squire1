@@ -183,7 +183,7 @@ After deploying these workflows to n8n, you must configure the Telegram credenti
 
 3. **Rotate the exposed token:**
    - Go to [@BotFather](https://t.me/BotFather) on Telegram
-   - Use `/revoke` command for bot: `8232702492:AAE...PTUc`
+   - Use `/revoke` command for bot (DONE - rotated 2026-02-05)
    - Generate new token
    - Add to n8n credentials
 
@@ -208,7 +208,7 @@ Expected response: Telegram message with system status
 {
   "type": "n8n-nodes-base.httpRequest",
   "parameters": {
-    "url": "https://api.telegram.org/bot8232702492:AAE...PTUc/sendMessage"
+    "url": "https://api.telegram.org/bot<TOKEN_IN_N8N_CREDENTIALS>/sendMessage"
   }
 }
 ```
@@ -268,7 +268,7 @@ Expected response: Telegram message with system status
 ## Recommendations
 
 1. **Immediate Actions:**
-   - Rotate exposed Telegram bot token (8232702492:AAE...PTUc)
+   - ~~Rotate exposed Telegram bot token~~ (DONE - rotated 2026-02-05)
    - Configure n8n credential before activating workflows
    - Test each workflow after credential setup
 

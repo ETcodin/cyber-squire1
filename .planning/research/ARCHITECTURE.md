@@ -487,7 +487,7 @@ Sub-Workflow → Completes Later → Calls Back via Webhook
 
 **Security Violations Found:**
 ```
-Telegram Bot Token: bot8232702492:AAEFQXuDF1M6Oz03K5CbYTy8cHH1lw7PTUc
+Telegram Bot Token: REVOKED - stored in n8n credentials (credential ID: telegram-bot-main)
 Files:
 - workflow_master_router_v5.json (line 172)
 - workflow_error_handler.json (line 25)

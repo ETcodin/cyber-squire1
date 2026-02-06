@@ -12,7 +12,7 @@ Update the error handler workflow to use n8n's credential system instead of hard
 
 **Changes Made**:
 - Replaced HTTP Request node with n8n Telegram node
-- Removed hardcoded bot token URL: `https://api.telegram.org/bot8232702492:AAEFQXuDF1M6Oz03K5CbYTy8cHH1lw7PTUc/sendMessage`
+- Removed hardcoded bot token URL (token revoked and rotated 2026-02-05, stored in n8n credentials)
 - Added credential reference: `telegramApi` with ID `telegram-bot-main`
 - Implemented n8n variable reference: `$vars.TELEGRAM_CHAT_ID` with fallback to `7868965034`
 - Maintained error formatting with workflow name, error message, last node, execution ID, and timestamp

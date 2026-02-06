@@ -127,7 +127,7 @@ All tasks are delegated to these four subagents to maximize token efficiency and
 
 ```bash
 # Required Environment Variables
-export TELEGRAM_BOT_TOKEN="8232702492:AAEFQXuDF1M6Oz03K5CbYTy8cHH1lw7PTUc"
+export TELEGRAM_BOT_TOKEN="REVOKED_TOKEN_ROTATED_2026-02-05"
 export EC2_PUBLIC_IP="54.234.155.244"
 export EC2_USER="ec2-user"
 export N8N_USER="et"
